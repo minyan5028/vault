@@ -23,7 +23,7 @@ export function App() {
           type="button"
           onClick={() => setEntryOpen(true)}
           aria-label={t("newEntry")}
-          className="fixed bottom-6 right-6 z-10 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500 text-3xl leading-none text-slate-900 shadow-lg active:bg-emerald-400"
+          className="fixed bottom-6 right-6 z-10 flex h-14 w-14 items-center justify-center rounded-full bg-rose-500 text-3xl leading-none text-white shadow-lg active:bg-rose-400"
         >
           +
         </button>

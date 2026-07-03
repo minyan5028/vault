@@ -33,6 +33,8 @@ export function QuickEntry({ onSave, onClose }: QuickEntryProps) {
   const [date, setDate] = useState<Date>(() => new Date());
   const [showNote, setShowNote] = useState(false);
   const [note, setNote] = useState("");
+  const [saved, setSaved] = useState(false);
+  const titleRef = useRef<HTMLInputElement>(null);
 
   const account = SEED_ACCOUNTS.find((a) => a.id === accountId)!;
   const currency = account.currency;
@@ -45,7 +47,7 @@ export function QuickEntry({ onSave, onClose }: QuickEntryProps) {
   }, [minor, isTransfer, accountId, toAccountId, categoryId]);
 
   function save() {
-    if (!canSave) return;
+    if (!canSave || saved) return;
     onSave({
       id: crypto.randomUUID(),
       type,
@@ -57,7 +59,9 @@ export function QuickEntry({ onSave, onClose }: QuickEntryProps) {
       title: title.trim(),
       date,
     });
-    onClose();
+    // Brief ✓ confirmation, then return to the Timeline.
+    setSaved(true);
+    setTimeout(onClose, 550);
   }
 
   // Physical keyboard: digits type the amount, Backspace deletes, Enter saves,
@@ -88,6 +92,13 @@ export function QuickEntry({ onSave, onClose }: QuickEntryProps) {
 
   return (
     <div className="fixed inset-0 z-20 overflow-y-auto bg-slate-900 text-slate-100">
+      {saved && (
+        <div className="fixed inset-0 z-30 flex items-center justify-center bg-slate-900/70">
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-500 text-4xl text-slate-900">
+            ✓
+          </div>
+        </div>
+      )}
       <div className="mx-auto flex min-h-dvh max-w-md flex-col px-4 pb-6 pt-4">
         <header className="mb-3 flex items-center justify-between">
           <button
@@ -130,6 +141,7 @@ export function QuickEntry({ onSave, onClose }: QuickEntryProps) {
             {formatMoney(minor, currency, i18n.language)}
           </div>
           <input
+            ref={titleRef}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder={t("titlePlaceholder")}
@@ -230,6 +242,7 @@ export function QuickEntry({ onSave, onClose }: QuickEntryProps) {
           <Numpad
             onDigit={(d) => setMinor((m) => appendDigit(m, d))}
             onBackspace={() => setMinor((m) => backspace(m))}
+            onNext={() => titleRef.current?.focus()}
           />
           <button
             type="button"

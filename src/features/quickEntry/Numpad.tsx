@@ -5,9 +5,11 @@ import type { ButtonHTMLAttributes } from "react";
 interface NumpadProps {
   onDigit: (digit: number) => void;
   onBackspace: () => void;
+  /** Advance from the amount to the title field. */
+  onNext: () => void;
 }
 
-export function Numpad({ onDigit, onBackspace }: NumpadProps) {
+export function Numpad({ onDigit, onBackspace, onNext }: NumpadProps) {
   return (
     <div className="grid grid-cols-3 gap-2">
       {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((d) => (
@@ -15,9 +17,10 @@ export function Numpad({ onDigit, onBackspace }: NumpadProps) {
           {d}
         </Key>
       ))}
-      <Key onClick={() => onDigit(0)} className="col-start-2">
-        0
+      <Key onClick={onNext} aria-label="next" className="text-slate-400">
+        →
       </Key>
+      <Key onClick={() => onDigit(0)}>0</Key>
       <Key onClick={onBackspace} aria-label="backspace">
         ⌫
       </Key>
