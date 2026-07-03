@@ -1,0 +1,237 @@
+# Vault — Detailed Roadmap
+
+Working plan for building Vault. The README keeps the one-line summary; this is
+the detailed breakdown. Sizes are T-shirt estimates (S/M/L), not dates —
+solo build, so sequence matters more than calendar.
+
+Guiding rule: **ship the smallest thing that replaces the current tool, then
+grow.** Don't build toward Phase 5 before Phase 1 is used daily.
+
+Legend: ✅ done · 🔜 next · ⬜ not started
+
+---
+
+## Phase 0 — Planning & Architecture
+
+**Goal:** lock foundations so Phase 1 is built without rework.
+
+| Item | Size | Status |
+|------|------|--------|
+| README (vision, principles, stack) | S | ✅ |
+| Data model spec (`docs/SPEC.md`) | M | ✅ |
+| Money model decided (×100 integer, FX at entry) | M | ✅ |
+| Notion migration script + seed JSON (3,144 txns) | M | ✅ |
+| Firebase project created (Auth + Firestore + Hosting) | S | ⬜ |
+| Firestore **security rules** (ledger-membership based) | M | ⬜ |
+| Firestore **composite indexes** plan (`yearMonth, deletedAt, date`) | S | ⬜ |
+| Admin SDK **loader** to import seed into Firestore | S | ⬜ |
+| Frontend scaffolding decisions (see below) | M | 🔜 |
+| "3-second entry" UX wireframe | M | 🔜 |
+
+**Frontend decisions to lock:** build tool (Vite vs Next.js), TypeScript (yes),
+state/data layer (Firestore SDK + which offline strategy), UI approach (headless
++ own styles vs component lib), routing, PWA config, folder structure.
+
+**Definition of done:** Firebase project exists, seed loads, and there's an
+agreed UI + architecture spec to build Phase 1 against.
+
+---
+
+## Phase 1 — Core Expense Tracking (MVP)
+
+**Goal:** the smallest version that replaces Notion for daily use. Record an
+expense in **under 3 seconds**; see this month.
+
+> Executable task breakdown: [phase-1-tasks.md](phase-1-tasks.md).
+
+| Deliverable | Size |
+|-------------|------|
+| Google sign-in (Firebase Auth) | S |
+| Firestore integration + offline persistence | M |
+| **Quick-entry screen** — numpad-first, expense/income/transfer toggle, category icon grid, account selector, date defaults today, optional title/note | L |
+| Income & transfer entry (transfer: from/to account, no category) | M |
+| Recent/frequent categories surfaced first (Food is 62% of data) | S |
+| Transaction list — this month, grouped by day, running total | M |
+| Edit / soft-delete a transaction | S |
+| Category management (CRUD; seed the 14) | M |
+| Account management (CRUD; seed the 6 buckets) | M |
+| Import the 3-year seed so it's useful from day one | S |
+| PWA installable on phone (offline-capable) | M |
+
+**Data model impact:** none — Phase 1 is exactly the current spec (`type`
+already covers expense/income/transfer).
+
+**Architecture note:** thread `ledgerId` through every read/write from day one —
+do **not** hardcode a single ledger. Phase 2 (sharing) adds multiple ledgers;
+building single-ledger-aware now avoids a rewrite. The MVP just shows one.
+
+**Definition of done:** user records on their phone every day for a week and
+stops opening Notion.
+
+**Out of scope (deliberately):** budgets, charts, sharing, investments.
+
+---
+
+## Phase 2 — Shared Finance (per-ledger)
+
+**Goal:** share a *part* of finances, not everything. ("Couple's" is already a
+bucket — the need exists now.) Done early because sharing is foundational: it
+touches how `ledgerId` is threaded everywhere.
+
+**Model of sharing: a shared context = its own ledger** (not a per-account ACL
+inside a personal ledger). So "Couple's" becomes a separate ledger both partners
+are members of, while Personal/Dream/etc stay private. This keeps security rules
+simple ("member of the ledger ⇒ can read/write it") and needs no per-account
+permissions.
+
+| Deliverable | Size |
+|-------------|------|
+| Multiple ledgers per user + ledger switcher (Personal / Couple's) | M |
+| Invite & join a ledger (invitation flow) | L |
+| Roles: owner / member; security rules for multi-member read/write | L |
+| Per-transaction `createdBy` attribution shown in UI | S |
+| Real-time sync UX (two people editing) | M |
+
+**Data model impact:** `members` map already exists; add roles + an
+`invitations` collection. No restructuring — this is why data lives under a
+`ledger` from day one and why Phase 1 threads `ledgerId`.
+
+**Migration note:** the Notion seed lands in one Personal ledger. Splitting the
+"Couple's" account into a separate shared ledger later is a data move, not a
+schema change.
+
+**Trade-off / open:** a shared-as-separate-ledger design means no single list
+mixing personal + shared accounts. A unified cross-ledger view is a later
+nicety — confirm this is acceptable when designing Phase 2.
+
+**Definition of done:** user + partner both record into a shared "Couple's"
+ledger and see each other's entries live, while personal ledgers stay private.
+
+---
+
+## Phase 3 — Analytics, Budgeting & Reporting
+
+**Goal:** understand spending and stay on budget.
+
+| Deliverable | Size |
+|-------------|------|
+| Monthly summary by category (sum `baseAmount`) | M |
+| Spending trend over time (month-over-month) | M |
+| Charts — category breakdown + trend (follow dataviz conventions) | M |
+| **Budgets per account-bucket first** (envelope style), category budgets later | L |
+| Budget progress + overspend indicators | M |
+| Filters & search (category, account, date range, title text) | M |
+| Data export (CSV / JSON) — delivers "own your data" for real | S |
+
+**Data model impact:** new `budgets` collection (keyed by account first);
+optional monthly **rollup docs** if client-side aggregation gets slow (data is
+~1k txns/yr, so likely not needed soon).
+
+**Definition of done:** can answer "did I overspend on the Food/General bucket
+this month?" at a glance.
+
+---
+
+## Phase 4 — Asset & Investment Management
+
+**Goal:** track net worth, not just cash flow — including US stocks.
+
+| Deliverable | Size |
+|-------------|------|
+| Accounts carry balances (assets & liabilities), manual snapshots | M |
+| **Buy lots**: record when / at what price / which stock / how many shares | M |
+| Periodic **price + quantity snapshots** (user updates every ~2–3 months) | M |
+| **Sells** with cost-basis handling (lot-based) | M |
+| Returns: **growth-stock vs dividend-stock** calculations | M |
+| Dividend income records | S |
+| Foreign holdings valued via `baseAmount` / FX into TWD | M |
+| Net worth over time | M |
+| Price updates — manual first, market-data API later | M |
+
+**Data model impact (Phase 4 only — no MVP impact):** new `holdings` /
+`lots` / price-`snapshots` collections. A buy is two things: a **lot** (shares
+at cost) *and* a normal **cash transaction** (the money out) — the existing
+transaction model already handles the cash side. Quantities/prices reuse the
+×100 rule (2 decimals; qty×price may not reconcile to the cent — accepted).
+Detailed schema to be designed at Phase 4; captured here so it isn't lost.
+
+**Definition of done:** see total net worth including US stocks, in TWD, with
+per-holding return split into growth vs dividend.
+
+---
+
+## Phase 5 — AI-Powered Financial Assistant
+
+**Goal:** natural-language insight over financial history. Built on the Claude API.
+
+| Deliverable | Size |
+|-------------|------|
+| Auto-categorization suggestions on entry (learn title → category) | M |
+| Natural-language queries ("how much on eating out last month?") | L |
+| Prose monthly summaries & spending insights | M |
+| Subscription / recurring / anomaly detection | M |
+
+**Data model impact:** minimal; possibly a derived index for retrieval.
+
+**Definition of done:** ask a question in plain language and get a correct,
+grounded answer over your own data.
+
+---
+
+## Backlog (unscheduled)
+
+Domain concepts defined in SPEC.md but not yet placed in a phase:
+
+- **Attachments** (receipts, statements, images) — needs **Firebase Storage**
+  (new dependency, cost, offline-sync complexity). Post-MVP; likely alongside
+  or after Phase 3.
+- **Tags** — lightweight optional classification beyond categories. Post-MVP.
+
+---
+
+## Cross-cutting (every phase)
+
+- **Offline-first behavior** — entry must work with no signal, sync later.
+- **Backup / export** — never trap the data; export lands in Phase 2.
+- **Security rules** — tighten as sharing (Phase 3) arrives.
+- **Testing** — at least the money math (×100, FX rounding) has unit tests.
+
+---
+
+## Dependencies (build order)
+
+```
+Phase 0 ──▶ Phase 1 ──▶ Phase 2 (sharing) ──▶ Phase 3 (analytics)
+                                                     └──▶ Phase 4 ──▶ Phase 5
+```
+
+Phase 1 unlocks everything. Sharing (Phase 2) is deliberately before analytics
+(Phase 3) because it's foundational — it defines how `ledgerId` is threaded, so
+doing it before building lots of analytics avoids rework.
+
+---
+
+## Recommended immediate next steps
+
+1. Design the **3-second quick-entry UX** (no backend needed — do it now).
+2. Create the **Firebase project** + lock frontend scaffolding decisions.
+3. Write the **security rules** + **Admin SDK loader**, import the seed.
+4. Build Phase 1 quick-entry against the loaded real data.
+
+---
+
+## Decisions made
+
+1. ✅ **Income & transfer are in Phase 1** (not a fast-follow).
+2. ✅ **Sharing is Phase 2, analytics/budgeting is Phase 3** — sharing is
+   foundational (ledger threading), so it comes first.
+3. ✅ **Budgets are per account-bucket first**, category budgets later.
+4. ✅ **Sharing = separate ledger**, not per-account permissions.
+5. ✅ **Investment tracking is Phase 4 only** — no impact on the MVP data model.
+
+## Open questions (revisit at the relevant phase)
+
+- **Phase 2:** is losing a unified personal+shared account list acceptable
+  (since shared = separate ledger)?
+- **Phase 4:** manual price entry only, or integrate a market-data API
+  (adds a dependency/cost)?

@@ -1,97 +1,215 @@
 # Vault
 
-> Build once. Use for life.
+> **Build once. Grow for life.**
 
-## Why Vault
+Vault is a **Financial Operating System** built around **Financial Events**.
 
-I've kept a habit of tracking every expense for years, but no tool has fit for the long run:
+It begins as an expense tracker, but expense tracking is only the first capability of a much larger system. Vault is designed to become a long-lived home for personal financial data—from daily spending and shared household finances to investments, net worth, and AI-powered financial insights.
 
-- **Money Manager (Expense & Budget)** was fast and pleasant to use, but had no online sync or shared editing — so it couldn't grow with a family.
-- **Notion** solved sync and sharing, but it's the wrong tool for the job. Its general-purpose data model makes every table slow to load, and recording a transaction became a chore.
-
-Recording an expense should feel instant. Data should sync so more than one person can use it. And the tool should be simple enough to keep running for years without heavy maintenance.
-
-Vault is my attempt to build that — starting as an expense tracker for myself, and growing into a finance system my future family can share.
+Rather than optimizing for a single stage of life, Vault is designed to evolve through every stage of it.
 
 ---
 
-## Philosophy
+## Why Vault Exists
 
-- **Fast** — Recording a transaction should take less than 3 seconds.
-- **Low maintenance** — Simple enough for one person to keep alive for 10+ years.
-- **Cloud native** — Synced across devices so it can be shared, not locked to one phone.
-- **Scalable** — Starts as an expense tracker and grows into a full personal finance system.
-- **AI pending** — Built with future AI-powered financial analysis in mind.
+Most financial software solves one problem well.
+
+Some applications are excellent expense trackers.
+
+Others focus on budgeting.
+
+Others specialize in investments.
+
+Others support family finance.
+
+As life changes, users eventually outgrow one tool and migrate to another.
+
+Financial history becomes fragmented across multiple applications.
+
+**Vault exists because financial software shouldn't be replaced every time life changes.**
+
+Instead, Vault is designed to grow through every phase of life while preserving a single, continuous financial history.
 
 ---
 
-## Vision
+## What Vault Is
 
-Vault is not just another expense tracker. The goal is a single, long-lived home for personal financial data — from daily transactions and budgeting to assets, investments, and long-term insights — that can be used every day for the next 10+ years.
+Vault is **not just** an expense tracker.
+
+Expense tracking is simply the first capability built on top of Vault's financial event model.
+
+At its core, Vault records **Financial Events**.
+
+Examples include:
+
+* Expenses
+* Income
+* Transfers
+* Dividends
+* Asset purchases
+* Asset sales
+* Interest
+* Refunds
+* Future financial event types
+
+Everything else—budgets, reports, charts, investment performance, AI insights—is derived from those recorded events.
+
+Financial events are the source of truth.
+
+---
+
+## Design Philosophy
+
+Vault follows one central principle:
+
+> **Optimize the common path. Enable the uncommon path.**
+
+Daily actions should require almost no thought.
+
+Advanced financial workflows should remain available without making everyday usage more complicated.
+
+Examples:
+
+* Recording lunch should take less than three seconds.
+* Reviewing yearly investment performance may take several minutes.
+* Creating a shared family ledger may require multiple setup steps.
+
+Complexity is acceptable.
+
+Unnecessary friction is not.
 
 ---
 
 ## Core Principles
 
-- Mobile-first experience
-- Fast and frictionless transaction recording
-- Cloud sync for multi-device and shared family use
-- Long-term maintainability over feature count
-- Extensible, modular design
+### Reality First
+
+Vault records what actually happened.
+
+Budgets, analytics, forecasts, and AI are all built on top of recorded financial events—not the other way around.
 
 ---
 
-## Roadmap
+### Fast Where It Matters
 
-### Phase 0 — Planning & Architecture
-Define the data model, tech stack, and the core "record in under 3 seconds" flow.
+The most common workflows must remain extremely fast.
 
-### Phase 1 — Core Expense Tracking (MVP)
-The smallest version worth using every day.
-
-- Add / edit / delete a transaction (amount, category, date, note)
-- Category management
-- Simple monthly list and total
-- Auth and cloud sync
-
-_Out of scope for MVP: budgets, reports, multi-user sharing, investments._
-
-### Phase 2 — Analytics, Budgeting & Reporting
-Monthly summaries, budgets, and spending insights.
-
-### Phase 3 — Shared Family Finance
-Multiple people recording into a shared space.
-
-### Phase 4 — Asset & Investment Management
-Track accounts, assets, and investments.
-
-### Phase 5 — AI-Powered Financial Assistant
-Natural-language insights and analysis over your financial history.
+Every new feature should preserve the speed of daily expense entry.
 
 ---
 
-## Tech Stack
+### Simple by Design
 
-- React
-- Firebase Authentication
-- Cloud Firestore
-- Firebase Hosting
-- Progressive Web App (PWA)
+Vault is intentionally designed to support sophisticated financial workflows.
 
-Firebase is chosen deliberately to keep operational overhead near zero — no servers to run or maintain for a single-user start.
+Complexity is managed through architecture and user experience—not by removing capability.
 
 ---
 
-## Getting Started
+### Grow Without Migration
 
-> Setup instructions will be added once the Phase 1 scaffold lands.
+Users should not need different software as their financial life becomes more complex.
 
-```bash
-# Coming soon
-```
+Vault grows alongside its owner.
 
 ---
 
-## Project Status
+### Own Your Data
 
-🚧 Phase 0 — planning and architecture. No application code yet.
+Financial history belongs to the user.
+
+Importing and exporting data should always remain possible.
+
+No proprietary lock-in.
+
+---
+
+### Built for Decades
+
+Technology choices prioritize maintainability over trends.
+
+Vault is intended to remain useful for many years—not just until the next framework becomes popular.
+
+---
+
+## Long-Term Vision
+
+Vault aims to become a complete financial operating system.
+
+Its capabilities will gradually expand through multiple stages:
+
+* Expense Tracking
+* Shared Finance
+* Budgeting & Analytics
+* Net Worth
+* Investment Tracking
+* Financial Intelligence
+* AI Assistant
+
+Each capability builds upon the same underlying financial event model.
+
+No redesign.
+
+No migration.
+
+Only growth.
+
+---
+
+## Current Status
+
+Vault is currently in **Phase 0 — Architecture & Product Design**.
+
+The project is focused on establishing:
+
+* Product philosophy
+* Domain model
+* Technical architecture
+* User experience
+* Long-term maintainability
+
+Implementation begins only after the foundations are complete.
+
+---
+
+## Technology
+
+Vault is built with a cloud-native architecture designed to minimize operational overhead.
+
+Current technology choices:
+
+* React
+* Firebase Authentication
+* Cloud Firestore
+* Firebase Hosting
+* Progressive Web App (PWA)
+
+This stack allows Vault to focus on product design instead of server maintenance.
+
+---
+
+## Documentation
+
+Project documentation is organized into several living documents.
+
+| Document | Purpose | Status |
+| --- | --- | --- |
+| [README.md](README.md) | Product overview | ✅ |
+| [docs/PHILOSOPHY.md](docs/PHILOSOPHY.md) | Design philosophy and guiding principles | ✅ |
+| [docs/SPEC.md](docs/SPEC.md) | Domain model and ubiquitous language (implementation-free) | ✅ draft |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture and implementation strategy | ✅ draft |
+| [docs/DATA_MODEL.md](docs/DATA_MODEL.md) | Persistence model — Firestore schema, indexes, money rules | ✅ draft |
+| [docs/UX.md](docs/UX.md) | UX specification — the 3-second quick-entry path | ✅ draft |
+| [docs/ADR/](docs/ADR/) | Architecture Decision Records | ✅ |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | Product development roadmap | ✅ |
+| [docs/phase-1-tasks.md](docs/phase-1-tasks.md) | Phase 1 executable task list | ✅ |
+
+Together, these documents define Vault more accurately than the implementation itself.
+
+---
+
+## Mission
+
+> **Build once. Grow for life.**
+
+Vault is designed to become the last financial system you'll ever need—not because it already supports everything, but because it is built to grow with you instead of being replaced.
