@@ -57,11 +57,15 @@ Target time: **≤ 3 seconds**
 
 ## Step 1 — Open
 
-User opens Vault.
+Vault opens on the **Timeline** (recent entries). A bottom-right **＋ (FAB)**
+opens Quick Entry.
 
-System immediately shows Quick Entry screen.
+This mirrors Money Manager (a tool the user finds fast): landing on the list
+gives immediate context, and the FAB tap is negligible (<0.5s) against the
+3-second goal. For the fastest path, a home-screen **shortcut or widget** can
+jump straight into Quick Entry, bypassing the Timeline.
 
-No dashboards. No landing page. No loading state.
+No heavy dashboard, no loading gate — the list and the ＋ are the whole home.
 
 ---
 
@@ -278,16 +282,19 @@ Critical failures only:
 Vault UI is structured as:
 
 ```
-Quick Entry (Primary)
+Timeline (home surface on launch)
+    │  tap ＋ (FAB)
+    ▼
+Quick Entry (primary action — most frequent)
     ↓
-Timeline (Secondary)
+Analytics (secondary)
     ↓
-Analytics (Tertiary)
-    ↓
-Settings (Minimal)
+Settings (minimal)
 ```
 
-Users should spend 80% of time in Quick Entry.
+The Timeline is where users land and review; recording via Quick Entry is the
+most frequent action, reached in one tap from the FAB (or directly via a
+shortcut/widget).
 
 ---
 

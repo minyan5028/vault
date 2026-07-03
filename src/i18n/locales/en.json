@@ -2,5 +2,21 @@
   "appName": "Vault",
   "tagline": "Your personal finance OS.",
   "scaffoldNote": "Phase 1 scaffold. Money engine online — e.g. {{example}}.",
-  "language": "Language"
+  "language": "Language",
+  "type_expense": "Expense",
+  "type_income": "Income",
+  "type_transfer": "Transfer",
+  "category": "Category",
+  "account": "Account",
+  "date": "Date",
+  "from": "From",
+  "to": "To",
+  "titlePlaceholder": "What was it? (optional)",
+  "note": "Note",
+  "addNote": "Add note",
+  "save": "Save",
+  "recent": "Recent",
+  "empty": "No entries yet — tap + to add one.",
+  "close": "Close",
+  "newEntry": "New entry"
 }
