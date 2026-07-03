@@ -11,6 +11,7 @@ change a decision, add a new ADR that supersedes the old one.
 | [0003](0003-ledger-based-permissions.md) | Ledger-based permission model | Accepted |
 | [0004](0004-soft-delete.md) | Soft delete instead of hard delete | Accepted |
 | [0005](0005-financial-event-source-of-truth.md) | Financial Event as the single source of truth | Accepted |
+| [0006](0006-i18n-from-day-one.md) | Internationalization (and unit testing) from day one | Accepted |
 
 Template for each record: **Status · Context · Decision · Consequences · Rationale**.
 

@@ -188,6 +188,21 @@ This stack allows Vault to focus on product design instead of server maintenance
 
 ---
 
+## Getting Started
+
+```bash
+npm install          # install dependencies
+npm test             # run unit tests (money engine)
+npm run dev          # start the dev server
+npm run build        # typecheck + production build
+```
+
+To connect Firebase, copy `.env.example` to `.env.local` and fill it with your
+Firebase project settings. The app builds and runs without it; Firestore-backed
+features activate once it's configured.
+
+---
+
 ## Documentation
 
 Project documentation is organized into several living documents.

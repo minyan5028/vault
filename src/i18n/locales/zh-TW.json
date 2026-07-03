@@ -1,0 +1,6 @@
+{
+  "appName": "Vault",
+  "tagline": "你的個人財務作業系統。",
+  "scaffoldNote": "Phase 1 骨架。金額引擎已上線 — 例如 {{example}}。",
+  "language": "語言"
+}

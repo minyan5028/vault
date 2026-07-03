@@ -7,8 +7,13 @@ Ordered by **milestone**: build a thin walking skeleton first, then flesh out.
 Each task has an acceptance check. Sizes: S ≈ hours, M ≈ 1–2 days, L ≈ 3+ days
 (solo, rough). Check off as you go.
 
-Foundational rule for all tasks: **every read/write is scoped by `ledgerId`** —
-never hardcode a single ledger (Phase 2 sharing depends on this).
+Foundational rules for all tasks (see ADRs):
+
+- **Every read/write is scoped by `ledgerId`** — never hardcode a single ledger
+  (Phase 2 sharing depends on this).
+- **No hardcoded user-facing strings** — every string goes through `t("key")`
+  and lives in a locale file (i18n from day one, [ADR-0006](ADR/0006-i18n-from-day-one.md)).
+- **Correctness-critical logic ships with unit tests** (money/FX first).
 
 ---
 
@@ -26,9 +31,13 @@ never hardcode a single ledger (Phase 2 sharing depends on this).
 
 ## Milestone 1 — Walking skeleton (sign in → see data)
 
-- [ ] **P1-01** App scaffold: Vite + React + TS project, folder structure,
-  Firebase SDK initialized from config. — S
-  - _Accept:_ `npm run dev` serves a blank app that connects to Firebase.
+- [x] **P1-01** App scaffold: Vite + React + TS project, folder structure,
+  Firebase SDK initialized from config. — S ✅
+  - _Accept:_ `npm run dev` serves the app; build + typecheck pass. Firebase
+    connects once `.env.local` is filled from a real project.
+- [x] **P1-01b** Foundations from day one: Vitest + i18n (react-i18next, `en` /
+  `zh-TW`, type-checked keys). — S ✅
+  - _Accept:_ 15 tests green; UI strings resolved via `t()`; language toggle works.
 - [ ] **P1-02** Google sign-in / sign-out via Firebase Auth; gate the app behind
   auth. — S
   - _Accept:_ can sign in, see own uid; refresh keeps the session.
@@ -73,9 +82,9 @@ never hardcode a single ledger (Phase 2 sharing depends on this).
 - [ ] **P1-12** Save writes a valid transaction (`yearMonth`, `baseAmount`,
   `fxRate=1`, `createdBy`, timestamps) and returns to the list instantly. — S
   - _Accept:_ a full expense entry takes **≤3 seconds** end-to-end; doc is valid.
-- [ ] **P1-13** Money formatting helper (÷100 display, ×100 store) with unit
-  tests, used everywhere. — S
-  - _Accept:_ tests cover TWD; `12345` ↔ `123.45`.
+- [x] **P1-13** Money formatting helper (÷100 display, ×100 store) with unit
+  tests, used everywhere. — S ✅ (`src/lib/money.ts`, 11 tests)
+  - _Accept:_ tests cover TWD/USD/JPY and float traps; `12345` ↔ `123.45`.
 
 ---
 
