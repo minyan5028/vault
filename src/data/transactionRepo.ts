@@ -10,6 +10,7 @@ import {
   collection,
   doc,
   getDocs,
+  onSnapshot,
   orderBy,
   query,
   serverTimestamp,
@@ -17,6 +18,7 @@ import {
   where,
   type DocumentData,
   type QueryDocumentSnapshot,
+  type Unsubscribe,
 } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { yearMonthOf } from "../lib/date";
@@ -38,6 +40,9 @@ export interface NewTransactionInput {
   note: string | null;
   createdBy: string;
 }
+
+/** What Quick Entry produces; the repo/caller adds `createdBy`. */
+export type EntryDraft = Omit<NewTransactionInput, "createdBy">;
 
 function transactionsCol(ledgerId: string) {
   return collection(db, "ledgers", ledgerId, "transactions");
@@ -92,6 +97,27 @@ export const transactionRepo = {
     );
     const snap = await getDocs(q);
     return snap.docs.map(fromSnapshot);
+  },
+
+  /**
+   * Live subscription to a month, updating on every change (and offline via the
+   * local cache). Uses an equality-only query so no composite index is needed
+   * yet; sorting and the deletedAt filter are applied client-side (month volume
+   * is small). Returns an unsubscribe function.
+   */
+  subscribeByMonth(
+    ledgerId: string,
+    yearMonth: string,
+    cb: (txns: Transaction[]) => void,
+  ): Unsubscribe {
+    const q = query(transactionsCol(ledgerId), where("yearMonth", "==", yearMonth));
+    return onSnapshot(q, (snap) => {
+      const txns = snap.docs
+        .map(fromSnapshot)
+        .filter((t) => t.deletedAt === null)
+        .sort((a, b) => b.date.getTime() - a.date.getTime());
+      cb(txns);
+    });
   },
 
   /** Edit in place (loose event model): update fields and bump updatedAt. */

@@ -23,5 +23,7 @@
   "recent": "Recent",
   "empty": "No entries yet — tap + to add one.",
   "close": "Close",
-  "newEntry": "New entry"
+  "newEntry": "New entry",
+  "signIn": "Sign in with Google",
+  "signOut": "Sign out"
 }

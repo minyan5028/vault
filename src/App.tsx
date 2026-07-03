@@ -1,22 +1,41 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { User } from "firebase/auth";
+import { useAuth } from "./auth/useAuth";
+import { provisionPersonalLedger } from "./data/provisionLedger";
+import { transactionRepo } from "./data/transactionRepo";
 import { Timeline } from "./features/timeline/Timeline";
 import { QuickEntry } from "./features/quickEntry/QuickEntry";
-import type { SessionEntry } from "./features/entries";
+import { SignIn } from "./features/auth/SignIn";
 
-/**
- * Vault opens on the Timeline; a bottom-right FAB opens Quick Entry as an
- * overlay (see docs/UX.md). Entries live here in memory until Firestore is
- * wired up.
- */
+/** Auth gate: splash while resolving, sign-in when signed out, else the app. */
 export function App() {
+  const { user, loading } = useAuth();
+  if (loading) return <Splash />;
+  if (!user) return <SignIn />;
+  return <AuthedApp user={user} />;
+}
+
+function AuthedApp({ user }: { user: User }) {
   const { t } = useTranslation();
-  const [entries, setEntries] = useState<SessionEntry[]>([]);
+  const [ledgerId, setLedgerId] = useState<string | null>(null);
   const [entryOpen, setEntryOpen] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    provisionPersonalLedger(user).then((id) => {
+      if (active) setLedgerId(id);
+    });
+    return () => {
+      active = false;
+    };
+  }, [user]);
+
+  if (!ledgerId) return <Splash />;
 
   return (
     <>
-      <Timeline entries={entries} />
+      <Timeline ledgerId={ledgerId} />
 
       {!entryOpen && (
         <button
@@ -31,10 +50,21 @@ export function App() {
 
       {entryOpen && (
         <QuickEntry
-          onSave={(entry) => setEntries((prev) => [entry, ...prev])}
+          onSubmit={(draft) =>
+            void transactionRepo.add(ledgerId, { ...draft, createdBy: user.uid })
+          }
           onClose={() => setEntryOpen(false)}
         />
       )}
     </>
+  );
+}
+
+function Splash() {
+  const { t } = useTranslation();
+  return (
+    <main className="flex min-h-dvh items-center justify-center bg-slate-900 text-slate-400">
+      <span className="text-lg font-semibold tracking-tight text-slate-200">{t("appName")}</span>
+    </main>
   );
 }

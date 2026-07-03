@@ -4,7 +4,7 @@ import { formatMoney } from "../../lib/money";
 import { toDateInputValue, fromDateInputValue } from "../../lib/date";
 import { SEED_ACCOUNTS, SEED_CATEGORIES } from "../../data/fixtures";
 import type { EventType } from "../../domain/types";
-import type { SessionEntry } from "../entries";
+import type { EntryDraft } from "../../data/transactionRepo";
 import { appendDigit, backspace } from "./amountInput";
 import { Numpad } from "./Numpad";
 import { LanguageToggle } from "../../components/LanguageToggle";
@@ -12,7 +12,7 @@ import { LanguageToggle } from "../../components/LanguageToggle";
 const TYPES: EventType[] = ["expense", "income", "transfer"];
 
 interface QuickEntryProps {
-  onSave: (entry: SessionEntry) => void;
+  onSubmit: (draft: EntryDraft) => void;
   onClose: () => void;
 }
 
@@ -21,7 +21,7 @@ interface QuickEntryProps {
  * Field order follows the user's habit: amount → title → category → account,
  * with date (defaults to today) and note as unobtrusive defaults.
  */
-export function QuickEntry({ onSave, onClose }: QuickEntryProps) {
+export function QuickEntry({ onSubmit, onClose }: QuickEntryProps) {
   const { t, i18n } = useTranslation();
 
   const [type, setType] = useState<EventType>("expense");
@@ -48,16 +48,19 @@ export function QuickEntry({ onSave, onClose }: QuickEntryProps) {
 
   function save() {
     if (!canSave || saved) return;
-    onSave({
-      id: crypto.randomUUID(),
+    onSubmit({
       type,
       amount: minor,
       currency,
+      baseAmount: minor, // single-currency for now; FX locks here later
+      baseCurrency: currency,
+      fxRate: 1,
+      date,
       categoryId: isTransfer ? null : categoryId,
       accountId,
       toAccountId: isTransfer ? toAccountId : null,
       title: title.trim(),
-      date,
+      note: showNote ? note.trim() || null : null,
     });
     // Brief ✓ confirmation, then return to the Timeline.
     setSaved(true);

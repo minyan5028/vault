@@ -3,26 +3,25 @@ import { useTranslation } from "react-i18next";
 import { formatMoney } from "../../lib/money";
 import { toDateInputValue, fromDateInputValue, yearMonthOf } from "../../lib/date";
 import { SEED_ACCOUNTS, SEED_CATEGORIES } from "../../data/fixtures";
-import type { SessionEntry } from "../entries";
+import { useMonthTransactions } from "../../data/useMonthTransactions";
+import type { Transaction } from "../../domain/types";
 import { LanguageToggle } from "../../components/LanguageToggle";
+import { signOutUser } from "../../auth/useAuth";
 
 const BASE_CURRENCY = "TWD";
 
 /**
- * The home screen: a month of Financial Events grouped by day, with a monthly
- * income/expense/total summary and per-day subtotals (see docs/UX.md).
+ * The home screen: a month of Financial Events (live from Firestore) grouped by
+ * day, with an income/expense/total summary and per-day subtotals (docs/UX.md).
  */
-export function Timeline({ entries }: { entries: SessionEntry[] }) {
+export function Timeline({ ledgerId }: { ledgerId: string }) {
   const { t, i18n } = useTranslation();
   const locale = i18n.language;
   const [month, setMonth] = useState<string>(() => yearMonthOf(new Date()));
+  const txns = useMonthTransactions(ledgerId, month);
 
-  const monthEntries = useMemo(
-    () => entries.filter((e) => yearMonthOf(e.date) === month),
-    [entries, month],
-  );
-  const summary = useMemo(() => totals(monthEntries), [monthEntries]);
-  const groups = useMemo(() => groupByDay(monthEntries), [monthEntries]);
+  const summary = useMemo(() => totals(txns), [txns]);
+  const groups = useMemo(() => groupByDay(txns), [txns]);
 
   return (
     <main className="min-h-dvh bg-slate-900 text-slate-100">
@@ -30,7 +29,16 @@ export function Timeline({ entries }: { entries: SessionEntry[] }) {
         {/* Header */}
         <header className="flex items-center justify-between py-3">
           <span className="text-lg font-semibold tracking-tight">{t("appName")}</span>
-          <LanguageToggle />
+          <div className="flex items-center gap-2">
+            <LanguageToggle />
+            <button
+              type="button"
+              onClick={() => void signOutUser()}
+              className="rounded-full bg-slate-800 px-2 py-1 text-xs text-slate-400"
+            >
+              {t("signOut")}
+            </button>
+          </div>
         </header>
 
         {/* Month selector */}
@@ -62,7 +70,7 @@ export function Timeline({ entries }: { entries: SessionEntry[] }) {
         </div>
 
         {/* Day-grouped list */}
-        {monthEntries.length === 0 ? (
+        {txns.length === 0 ? (
           <div className="mt-20 text-center text-slate-600">
             <div className="text-4xl">💰</div>
             <p className="mt-3 text-sm">{t("empty")}</p>
@@ -83,7 +91,7 @@ export function Timeline({ entries }: { entries: SessionEntry[] }) {
                   </div>
                   <ul className="divide-y divide-slate-800">
                     {items.map((e) => (
-                      <EntryRow key={e.id} entry={e} locale={locale} />
+                      <EntryRow key={e.id} tx={e} locale={locale} />
                     ))}
                   </ul>
                 </section>
@@ -123,54 +131,52 @@ function SummaryCell({
   );
 }
 
-function EntryRow({ entry, locale }: { entry: SessionEntry; locale: string }) {
-  const category = SEED_CATEGORIES.find((c) => c.id === entry.categoryId);
-  const account = SEED_ACCOUNTS.find((a) => a.id === entry.accountId);
-  const toAccount = SEED_ACCOUNTS.find((a) => a.id === entry.toAccountId);
+function EntryRow({ tx, locale }: { tx: Transaction; locale: string }) {
+  const category = SEED_CATEGORIES.find((c) => c.id === tx.categoryId);
+  const account = SEED_ACCOUNTS.find((a) => a.id === tx.accountId);
+  const toAccount = SEED_ACCOUNTS.find((a) => a.id === tx.toAccountId);
   const label =
-    entry.title ||
-    (entry.type === "transfer"
-      ? `${account?.name} → ${toAccount?.name}`
-      : category?.name) ||
+    tx.title ||
+    (tx.type === "transfer" ? `${account?.name} → ${toAccount?.name}` : category?.name) ||
     "";
-  const sign = entry.type === "income" ? "+" : entry.type === "expense" ? "−" : "";
+  const sign = tx.type === "income" ? "+" : tx.type === "expense" ? "−" : "";
   const amountColor =
-    entry.type === "income"
+    tx.type === "income"
       ? "text-sky-400"
-      : entry.type === "expense"
+      : tx.type === "expense"
         ? "text-rose-300"
         : "text-slate-400";
 
   return (
     <li className="flex items-center gap-3 py-2">
-      <span className="text-xl">{entry.type === "transfer" ? "↔️" : category?.icon}</span>
+      <span className="text-xl">{tx.type === "transfer" ? "↔️" : category?.icon}</span>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm text-slate-200">{label}</p>
         <p className="text-xs text-slate-500">{account?.name}</p>
       </div>
       <span className={"text-sm tabular-nums " + amountColor}>
         {sign}
-        {formatMoney(entry.amount, entry.currency, locale)}
+        {formatMoney(tx.amount, tx.currency, locale)}
       </span>
     </li>
   );
 }
 
 /** Income/expense/net totals in minor units (transfers excluded from spend). */
-function totals(items: SessionEntry[]): { income: number; expense: number; net: number } {
+function totals(items: Transaction[]): { income: number; expense: number; net: number } {
   let income = 0;
   let expense = 0;
   for (const e of items) {
-    if (e.type === "income") income += e.amount;
-    else if (e.type === "expense") expense += e.amount;
+    if (e.type === "income") income += e.baseAmount;
+    else if (e.type === "expense") expense += e.baseAmount;
   }
   return { income, expense, net: income - expense };
 }
 
-/** Group entries by local day, preserving newest-first order. */
-function groupByDay(entries: SessionEntry[]): [string, SessionEntry[]][] {
-  const map = new Map<string, SessionEntry[]>();
-  for (const e of entries) {
+/** Group transactions by local day, preserving newest-first order. */
+function groupByDay(txns: Transaction[]): [string, Transaction[]][] {
+  const map = new Map<string, Transaction[]>();
+  for (const e of txns) {
     const key = toDateInputValue(e.date);
     const arr = map.get(key);
     if (arr) arr.push(e);
