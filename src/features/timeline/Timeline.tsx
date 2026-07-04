@@ -2,9 +2,8 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { formatMoney } from "../../lib/money";
 import { toDateInputValue, fromDateInputValue, yearMonthOf } from "../../lib/date";
-import { SEED_ACCOUNTS, SEED_CATEGORIES } from "../../data/fixtures";
 import { useMonthTransactions } from "../../data/useMonthTransactions";
-import type { Transaction } from "../../domain/types";
+import type { Account, Category, Transaction } from "../../domain/types";
 import { LanguageToggle } from "../../components/LanguageToggle";
 import { signOutUser } from "../../auth/useAuth";
 
@@ -16,9 +15,13 @@ const BASE_CURRENCY = "TWD";
  */
 export function Timeline({
   ledgerId,
+  accounts,
+  categories,
   onEdit,
 }: {
   ledgerId: string;
+  accounts: Account[];
+  categories: Category[];
   onEdit: (tx: Transaction) => void;
 }) {
   const { t, i18n } = useTranslation();
@@ -97,7 +100,14 @@ export function Timeline({
                   </div>
                   <ul className="divide-y divide-slate-800">
                     {items.map((e) => (
-                      <EntryRow key={e.id} tx={e} locale={locale} onEdit={onEdit} />
+                      <EntryRow
+                        key={e.id}
+                        tx={e}
+                        locale={locale}
+                        accounts={accounts}
+                        categories={categories}
+                        onEdit={onEdit}
+                      />
                     ))}
                   </ul>
                 </section>
@@ -140,15 +150,19 @@ function SummaryCell({
 function EntryRow({
   tx,
   locale,
+  accounts,
+  categories,
   onEdit,
 }: {
   tx: Transaction;
   locale: string;
+  accounts: Account[];
+  categories: Category[];
   onEdit: (tx: Transaction) => void;
 }) {
-  const category = SEED_CATEGORIES.find((c) => c.id === tx.categoryId);
-  const account = SEED_ACCOUNTS.find((a) => a.id === tx.accountId);
-  const toAccount = SEED_ACCOUNTS.find((a) => a.id === tx.toAccountId);
+  const category = categories.find((c) => c.id === tx.categoryId);
+  const account = accounts.find((a) => a.id === tx.accountId);
+  const toAccount = accounts.find((a) => a.id === tx.toAccountId);
   const label =
     tx.title ||
     (tx.type === "transfer" ? `${account?.name} → ${toAccount?.name}` : category?.name) ||

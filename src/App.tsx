@@ -5,6 +5,7 @@ import type { Transaction } from "./domain/types";
 import { useAuth } from "./auth/useAuth";
 import { provisionPersonalLedger } from "./data/provisionLedger";
 import { transactionRepo } from "./data/transactionRepo";
+import { useLedgerData } from "./data/useLedgerData";
 import { Timeline } from "./features/timeline/Timeline";
 import { QuickEntry } from "./features/quickEntry/QuickEntry";
 import { SignIn } from "./features/auth/SignIn";
@@ -25,6 +26,7 @@ function AuthedApp({ user }: { user: User }) {
   const [ledgerId, setLedgerId] = useState<string | null>(null);
   const [editor, setEditor] = useState<Editor>(null);
   const [undoId, setUndoId] = useState<string | null>(null);
+  const { accounts, categories } = useLedgerData(ledgerId ?? "");
 
   useEffect(() => {
     let active = true;
@@ -45,7 +47,12 @@ function AuthedApp({ user }: { user: User }) {
 
   return (
     <>
-      <Timeline ledgerId={ledgerId} onEdit={(tx) => setEditor({ tx })} />
+      <Timeline
+        ledgerId={ledgerId}
+        accounts={accounts}
+        categories={categories}
+        onEdit={(tx) => setEditor({ tx })}
+      />
 
       {!editor && (
         <button
@@ -62,6 +69,8 @@ function AuthedApp({ user }: { user: User }) {
         <QuickEntry
           key={editor.tx?.id ?? "new"}
           initial={editor.tx}
+          accounts={accounts}
+          categories={categories}
           onSubmit={(draft) => {
             if (editor.tx) transactionRepo.update(ledgerId, editor.tx.id, draft);
             else void transactionRepo.add(ledgerId, { ...draft, createdBy: user.uid });

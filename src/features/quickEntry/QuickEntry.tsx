@@ -2,8 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { formatMoney, toMinor, toMajor } from "../../lib/money";
 import { toDateInputValue, fromDateInputValue } from "../../lib/date";
-import { SEED_ACCOUNTS, SEED_CATEGORIES } from "../../data/fixtures";
-import type { EventType, Transaction } from "../../domain/types";
+import type { Account, Category, EventType, Transaction } from "../../domain/types";
 import type { EntryDraft } from "../../data/transactionRepo";
 import { LanguageToggle } from "../../components/LanguageToggle";
 
@@ -12,6 +11,8 @@ const TYPES: EventType[] = ["expense", "income", "transfer"];
 interface QuickEntryProps {
   /** When present, edit this transaction instead of creating a new one. */
   initial?: Transaction;
+  accounts: Account[];
+  categories: Category[];
   onSubmit: (draft: EntryDraft) => void;
   onDelete?: () => void;
   onClose: () => void;
@@ -43,15 +44,24 @@ function parseMinor(text: string): number {
  * the keyboard's "next" jumps to the title. Field order: amount → title →
  * category → account, with date (today) and note as unobtrusive defaults.
  */
-export function QuickEntry({ initial, onSubmit, onDelete, onClose }: QuickEntryProps) {
+export function QuickEntry({
+  initial,
+  accounts,
+  categories,
+  onSubmit,
+  onDelete,
+  onClose,
+}: QuickEntryProps) {
   const { t, i18n } = useTranslation();
 
   const [type, setType] = useState<EventType>(initial?.type ?? "expense");
   const [amountText, setAmountText] = useState(initial ? String(toMajor(initial.amount)) : "");
-  const [accountId, setAccountId] = useState(initial?.accountId ?? SEED_ACCOUNTS[0].id);
-  const [toAccountId, setToAccountId] = useState(initial?.toAccountId ?? SEED_ACCOUNTS[4].id);
+  const [accountId, setAccountId] = useState(initial?.accountId ?? accounts[0]?.id ?? "");
+  const [toAccountId, setToAccountId] = useState(
+    initial?.toAccountId ?? accounts[1]?.id ?? accounts[0]?.id ?? "",
+  );
   const [categoryId, setCategoryId] = useState<string | null>(
-    initial ? initial.categoryId : SEED_CATEGORIES[0].id,
+    initial ? initial.categoryId : (categories[0]?.id ?? null),
   );
   const [title, setTitle] = useState(initial?.title ?? "");
   const [date, setDate] = useState<Date>(() => initial?.date ?? new Date());
@@ -61,8 +71,8 @@ export function QuickEntry({ initial, onSubmit, onDelete, onClose }: QuickEntryP
   const titleRef = useRef<HTMLInputElement>(null);
 
   const minor = useMemo(() => parseMinor(amountText), [amountText]);
-  const account = SEED_ACCOUNTS.find((a) => a.id === accountId)!;
-  const currency = account.currency;
+  const account = accounts.find((a) => a.id === accountId);
+  const currency = account?.currency ?? "TWD";
   const isTransfer = type === "transfer";
 
   const canSave = useMemo(() => {
@@ -184,6 +194,7 @@ export function QuickEntry({ initial, onSubmit, onDelete, onClose }: QuickEntryP
         {/* Category grid (hidden for transfers) or transfer destination */}
         {isTransfer ? (
           <TransferAccounts
+            accounts={accounts}
             fromId={accountId}
             toId={toAccountId}
             onTo={setToAccountId}
@@ -195,7 +206,9 @@ export function QuickEntry({ initial, onSubmit, onDelete, onClose }: QuickEntryP
               {t("category")}
             </p>
             <div className="grid grid-cols-4 gap-2">
-              {SEED_CATEGORIES.map((c) => (
+              {categories
+                .filter((c) => !c.archived)
+                .map((c) => (
                 <button
                   key={c.id}
                   type="button"
@@ -221,21 +234,23 @@ export function QuickEntry({ initial, onSubmit, onDelete, onClose }: QuickEntryP
             {isTransfer ? t("from") : t("account")}
           </p>
           <div className="flex flex-wrap gap-2">
-            {SEED_ACCOUNTS.map((a) => (
-              <button
-                key={a.id}
-                type="button"
-                onClick={() => setAccountId(a.id)}
-                className={
-                  "rounded-full px-3 py-1 text-sm " +
-                  (accountId === a.id
-                    ? "bg-slate-100 text-slate-900"
-                    : "bg-slate-800 text-slate-300")
-                }
-              >
-                {a.name}
-              </button>
-            ))}
+            {accounts
+              .filter((a) => !a.archived)
+              .map((a) => (
+                <button
+                  key={a.id}
+                  type="button"
+                  onClick={() => setAccountId(a.id)}
+                  className={
+                    "rounded-full px-3 py-1 text-sm " +
+                    (accountId === a.id
+                      ? "bg-slate-100 text-slate-900"
+                      : "bg-slate-800 text-slate-300")
+                  }
+                >
+                  {a.name}
+                </button>
+              ))}
           </div>
         </section>
 
@@ -303,11 +318,13 @@ export function QuickEntry({ initial, onSubmit, onDelete, onClose }: QuickEntryP
 }
 
 function TransferAccounts({
+  accounts,
   fromId,
   toId,
   onTo,
   toLabel,
 }: {
+  accounts: Account[];
   fromId: string;
   toId: string;
   onTo: (id: string) => void;
@@ -317,20 +334,22 @@ function TransferAccounts({
     <section>
       <p className="mb-2 text-xs uppercase tracking-wide text-slate-500">{toLabel}</p>
       <div className="flex flex-wrap gap-2">
-        {SEED_ACCOUNTS.map((a) => (
-          <button
-            key={a.id}
-            type="button"
-            onClick={() => onTo(a.id)}
-            disabled={a.id === fromId}
-            className={
-              "rounded-full px-3 py-1 text-sm disabled:opacity-30 " +
-              (toId === a.id ? "bg-slate-100 text-slate-900" : "bg-slate-800 text-slate-300")
-            }
-          >
-            {a.name}
-          </button>
-        ))}
+        {accounts
+          .filter((a) => !a.archived)
+          .map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              onClick={() => onTo(a.id)}
+              disabled={a.id === fromId}
+              className={
+                "rounded-full px-3 py-1 text-sm disabled:opacity-30 " +
+                (toId === a.id ? "bg-slate-100 text-slate-900" : "bg-slate-800 text-slate-300")
+              }
+            >
+              {a.name}
+            </button>
+          ))}
       </div>
     </section>
   );
