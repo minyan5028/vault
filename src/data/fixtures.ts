@@ -27,6 +27,10 @@ export const SEED_ACCOUNTS: AccountFixture[] = [
   { id: "couple-s", name: "Couple's", currency: "TWD" },
   { id: "savings", name: "Savings", currency: "TWD" },
   { id: "investment", name: "Investment", currency: "TWD" },
+  { id: "advanced", name: "Advanced", currency: "TWD" },
+  { id: "us-stock-investment", name: "US Stock Investment", currency: "TWD" },
+  { id: "jpy-investment", name: "JPY Investment", currency: "TWD" },
+  { id: "nt-stock-investment", name: "NT Stock Investment", currency: "TWD" },
 ];
 
 // Ordered by frequency (descending) from the 3-year seed analysis.
