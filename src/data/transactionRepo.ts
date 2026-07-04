@@ -141,4 +141,12 @@ export const transactionRepo = {
       updatedAt: serverTimestamp(),
     });
   },
+
+  /** Undo a soft delete: clears deletedAt so it reappears in queries. */
+  async restore(ledgerId: string, id: string): Promise<void> {
+    await updateDoc(doc(transactionsCol(ledgerId), id), {
+      deletedAt: null,
+      updatedAt: serverTimestamp(),
+    });
+  },
 };

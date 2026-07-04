@@ -24,6 +24,10 @@
   "empty": "還沒有紀錄 — 點右下角 + 記一筆。",
   "close": "關閉",
   "newEntry": "新增一筆",
+  "edit": "編輯",
+  "delete": "刪除",
+  "deleted": "已刪除",
+  "undo": "復原",
   "signIn": "使用 Google 登入",
   "signOut": "登出"
 }

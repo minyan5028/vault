@@ -24,6 +24,10 @@
   "empty": "No entries yet — tap + to add one.",
   "close": "Close",
   "newEntry": "New entry",
+  "edit": "Edit",
+  "delete": "Delete",
+  "deleted": "Deleted",
+  "undo": "Undo",
   "signIn": "Sign in with Google",
   "signOut": "Sign out"
 }

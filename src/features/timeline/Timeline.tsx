@@ -14,7 +14,13 @@ const BASE_CURRENCY = "TWD";
  * The home screen: a month of Financial Events (live from Firestore) grouped by
  * day, with an income/expense/total summary and per-day subtotals (docs/UX.md).
  */
-export function Timeline({ ledgerId }: { ledgerId: string }) {
+export function Timeline({
+  ledgerId,
+  onEdit,
+}: {
+  ledgerId: string;
+  onEdit: (tx: Transaction) => void;
+}) {
   const { t, i18n } = useTranslation();
   const locale = i18n.language;
   const [month, setMonth] = useState<string>(() => yearMonthOf(new Date()));
@@ -91,7 +97,7 @@ export function Timeline({ ledgerId }: { ledgerId: string }) {
                   </div>
                   <ul className="divide-y divide-slate-800">
                     {items.map((e) => (
-                      <EntryRow key={e.id} tx={e} locale={locale} />
+                      <EntryRow key={e.id} tx={e} locale={locale} onEdit={onEdit} />
                     ))}
                   </ul>
                 </section>
@@ -131,7 +137,15 @@ function SummaryCell({
   );
 }
 
-function EntryRow({ tx, locale }: { tx: Transaction; locale: string }) {
+function EntryRow({
+  tx,
+  locale,
+  onEdit,
+}: {
+  tx: Transaction;
+  locale: string;
+  onEdit: (tx: Transaction) => void;
+}) {
   const category = SEED_CATEGORIES.find((c) => c.id === tx.categoryId);
   const account = SEED_ACCOUNTS.find((a) => a.id === tx.accountId);
   const toAccount = SEED_ACCOUNTS.find((a) => a.id === tx.toAccountId);
@@ -148,16 +162,22 @@ function EntryRow({ tx, locale }: { tx: Transaction; locale: string }) {
         : "text-slate-400";
 
   return (
-    <li className="flex items-center gap-3 py-2">
-      <span className="text-xl">{tx.type === "transfer" ? "↔️" : category?.icon}</span>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm text-slate-200">{label}</p>
-        <p className="text-xs text-slate-500">{account?.name}</p>
-      </div>
-      <span className={"text-sm tabular-nums " + amountColor}>
-        {sign}
-        {formatMoney(tx.amount, tx.currency, locale)}
-      </span>
+    <li>
+      <button
+        type="button"
+        onClick={() => onEdit(tx)}
+        className="flex w-full items-center gap-3 py-2 text-left active:bg-slate-800/50"
+      >
+        <span className="text-xl">{tx.type === "transfer" ? "↔️" : category?.icon}</span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm text-slate-200">{label}</p>
+          <p className="text-xs text-slate-500">{account?.name}</p>
+        </div>
+        <span className={"text-sm tabular-nums " + amountColor}>
+          {sign}
+          {formatMoney(tx.amount, tx.currency, locale)}
+        </span>
+      </button>
     </li>
   );
 }

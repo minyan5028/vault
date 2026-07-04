@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { formatMoney } from "../../lib/money";
 import { toDateInputValue, fromDateInputValue } from "../../lib/date";
 import { SEED_ACCOUNTS, SEED_CATEGORIES } from "../../data/fixtures";
-import type { EventType } from "../../domain/types";
+import type { EventType, Transaction } from "../../domain/types";
 import type { EntryDraft } from "../../data/transactionRepo";
 import { appendDigit, backspace } from "./amountInput";
 import { Numpad } from "./Numpad";
@@ -12,7 +12,10 @@ import { LanguageToggle } from "../../components/LanguageToggle";
 const TYPES: EventType[] = ["expense", "income", "transfer"];
 
 interface QuickEntryProps {
+  /** When present, edit this transaction instead of creating a new one. */
+  initial?: Transaction;
   onSubmit: (draft: EntryDraft) => void;
+  onDelete?: () => void;
   onClose: () => void;
 }
 
@@ -21,18 +24,20 @@ interface QuickEntryProps {
  * Field order follows the user's habit: amount → title → category → account,
  * with date (defaults to today) and note as unobtrusive defaults.
  */
-export function QuickEntry({ onSubmit, onClose }: QuickEntryProps) {
+export function QuickEntry({ initial, onSubmit, onDelete, onClose }: QuickEntryProps) {
   const { t, i18n } = useTranslation();
 
-  const [type, setType] = useState<EventType>("expense");
-  const [minor, setMinor] = useState(0);
-  const [accountId, setAccountId] = useState(SEED_ACCOUNTS[0].id);
-  const [toAccountId, setToAccountId] = useState(SEED_ACCOUNTS[4].id);
-  const [categoryId, setCategoryId] = useState(SEED_CATEGORIES[0].id); // most frequent
-  const [title, setTitle] = useState("");
-  const [date, setDate] = useState<Date>(() => new Date());
-  const [showNote, setShowNote] = useState(false);
-  const [note, setNote] = useState("");
+  const [type, setType] = useState<EventType>(initial?.type ?? "expense");
+  const [minor, setMinor] = useState(initial?.amount ?? 0);
+  const [accountId, setAccountId] = useState(initial?.accountId ?? SEED_ACCOUNTS[0].id);
+  const [toAccountId, setToAccountId] = useState(initial?.toAccountId ?? SEED_ACCOUNTS[4].id);
+  const [categoryId, setCategoryId] = useState<string | null>(
+    initial ? initial.categoryId : SEED_CATEGORIES[0].id, // default most-frequent for new
+  );
+  const [title, setTitle] = useState(initial?.title ?? "");
+  const [date, setDate] = useState<Date>(() => initial?.date ?? new Date());
+  const [showNote, setShowNote] = useState(!!initial?.note);
+  const [note, setNote] = useState(initial?.note ?? "");
   const [saved, setSaved] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
 
@@ -43,8 +48,9 @@ export function QuickEntry({ onSubmit, onClose }: QuickEntryProps) {
   const canSave = useMemo(() => {
     if (minor <= 0) return false;
     if (isTransfer) return accountId !== toAccountId;
-    return categoryId !== null;
-  }, [minor, isTransfer, accountId, toAccountId, categoryId]);
+    // Expenses need a category; income's category is optional.
+    return type === "expense" ? categoryId !== null : true;
+  }, [minor, isTransfer, type, accountId, toAccountId, categoryId]);
 
   function save() {
     if (!canSave || saved) return;
@@ -112,7 +118,9 @@ export function QuickEntry({ onSubmit, onClose }: QuickEntryProps) {
           >
             ✕
           </button>
-          <span className="text-sm font-semibold text-slate-300">{t("newEntry")}</span>
+          <span className="text-sm font-semibold text-slate-300">
+            {t(initial ? "edit" : "newEntry")}
+          </span>
           <LanguageToggle />
         </header>
 
@@ -260,6 +268,18 @@ export function QuickEntry({ onSubmit, onClose }: QuickEntryProps) {
           >
             {t("save")}
           </button>
+          {initial && onDelete && (
+            <button
+              type="button"
+              onClick={() => {
+                onDelete();
+                onClose();
+              }}
+              className="mt-2 h-11 w-full rounded-xl text-sm font-medium text-rose-400 active:bg-slate-800"
+            >
+              {t("delete")}
+            </button>
+          )}
         </section>
       </div>
     </div>

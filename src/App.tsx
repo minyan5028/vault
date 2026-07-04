@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { User } from "firebase/auth";
+import type { Transaction } from "./domain/types";
 import { useAuth } from "./auth/useAuth";
 import { provisionPersonalLedger } from "./data/provisionLedger";
 import { transactionRepo } from "./data/transactionRepo";
@@ -16,31 +17,40 @@ export function App() {
   return <AuthedApp user={user} />;
 }
 
+/** null = closed · {} = new entry · { tx } = editing an existing one. */
+type Editor = null | { tx?: Transaction };
+
 function AuthedApp({ user }: { user: User }) {
   const { t } = useTranslation();
   const [ledgerId, setLedgerId] = useState<string | null>(null);
-  const [entryOpen, setEntryOpen] = useState(false);
+  const [editor, setEditor] = useState<Editor>(null);
+  const [undoId, setUndoId] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
-    provisionPersonalLedger(user).then((id) => {
-      if (active) setLedgerId(id);
-    });
+    provisionPersonalLedger(user).then((id) => active && setLedgerId(id));
     return () => {
       active = false;
     };
   }, [user]);
 
+  // Auto-dismiss the undo snackbar.
+  useEffect(() => {
+    if (!undoId) return;
+    const timer = setTimeout(() => setUndoId(null), 5000);
+    return () => clearTimeout(timer);
+  }, [undoId]);
+
   if (!ledgerId) return <Splash />;
 
   return (
     <>
-      <Timeline ledgerId={ledgerId} />
+      <Timeline ledgerId={ledgerId} onEdit={(tx) => setEditor({ tx })} />
 
-      {!entryOpen && (
+      {!editor && (
         <button
           type="button"
-          onClick={() => setEntryOpen(true)}
+          onClick={() => setEditor({})}
           aria-label={t("newEntry")}
           className="fixed bottom-6 right-6 z-10 flex h-14 w-14 items-center justify-center rounded-full bg-rose-500 text-3xl leading-none text-white shadow-lg active:bg-rose-400"
         >
@@ -48,13 +58,41 @@ function AuthedApp({ user }: { user: User }) {
         </button>
       )}
 
-      {entryOpen && (
+      {editor && (
         <QuickEntry
-          onSubmit={(draft) =>
-            void transactionRepo.add(ledgerId, { ...draft, createdBy: user.uid })
+          key={editor.tx?.id ?? "new"}
+          initial={editor.tx}
+          onSubmit={(draft) => {
+            if (editor.tx) transactionRepo.update(ledgerId, editor.tx.id, draft);
+            else void transactionRepo.add(ledgerId, { ...draft, createdBy: user.uid });
+          }}
+          onDelete={
+            editor.tx
+              ? () => {
+                  const id = editor.tx!.id;
+                  void transactionRepo.softDelete(ledgerId, id);
+                  setUndoId(id);
+                }
+              : undefined
           }
-          onClose={() => setEntryOpen(false)}
+          onClose={() => setEditor(null)}
         />
+      )}
+
+      {undoId && (
+        <div className="fixed bottom-6 left-1/2 z-30 flex -translate-x-1/2 items-center gap-4 rounded-full bg-slate-100 px-4 py-2 text-sm text-slate-900 shadow-lg">
+          <span>{t("deleted")}</span>
+          <button
+            type="button"
+            onClick={() => {
+              void transactionRepo.restore(ledgerId, undoId);
+              setUndoId(null);
+            }}
+            className="font-semibold text-rose-600"
+          >
+            {t("undo")}
+          </button>
+        </div>
       )}
     </>
   );
