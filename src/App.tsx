@@ -69,6 +69,7 @@ function AuthedApp({ user }: { user: User }) {
         <QuickEntry
           key={editor.tx?.id ?? "new"}
           initial={editor.tx}
+          ledgerId={ledgerId}
           accounts={accounts}
           categories={categories}
           onSubmit={(draft) => {

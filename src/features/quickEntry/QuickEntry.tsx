@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { formatMoney, toMinor, toMajor } from "../../lib/money";
 import { toDateInputValue, fromDateInputValue } from "../../lib/date";
 import type { Account, Category, EventType, Transaction } from "../../domain/types";
-import type { EntryDraft } from "../../data/transactionRepo";
+import { transactionRepo, type EntryDraft } from "../../data/transactionRepo";
 import { LanguageToggle } from "../../components/LanguageToggle";
 
 const TYPES: EventType[] = ["expense", "income", "transfer"];
@@ -11,6 +11,7 @@ const TYPES: EventType[] = ["expense", "income", "transfer"];
 interface QuickEntryProps {
   /** When present, edit this transaction instead of creating a new one. */
   initial?: Transaction;
+  ledgerId: string;
   accounts: Account[];
   categories: Category[];
   onSubmit: (draft: EntryDraft) => void;
@@ -46,6 +47,7 @@ function parseMinor(text: string): number {
  */
 export function QuickEntry({
   initial,
+  ledgerId,
   accounts,
   categories,
   onSubmit,
@@ -68,7 +70,24 @@ export function QuickEntry({
   const [showNote, setShowNote] = useState(!!initial?.note);
   const [note, setNote] = useState(initial?.note ?? "");
   const [saved, setSaved] = useState(false);
+  const [titleFocused, setTitleFocused] = useState(false);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
   const titleRef = useRef<HTMLInputElement>(null);
+
+  // Title autocomplete: suggest past titles (same shop) as you type.
+  useEffect(() => {
+    if (!titleFocused || !title.trim()) {
+      setSuggestions([]);
+      return;
+    }
+    const h = setTimeout(() => {
+      transactionRepo
+        .suggestTitles(ledgerId, title, 6)
+        .then((s) => setSuggestions(s.filter((x) => x !== title)))
+        .catch(() => setSuggestions([]));
+    }, 200);
+    return () => clearTimeout(h);
+  }, [title, titleFocused, ledgerId]);
 
   const minor = useMemo(() => parseMinor(amountText), [amountText]);
   const account = accounts.find((a) => a.id === accountId);
@@ -173,23 +192,57 @@ export function QuickEntry({
           <div className="mt-1 h-5 text-sm text-slate-500">
             {minor > 0 ? formatMoney(minor, currency, i18n.language) : currency}
           </div>
-          <input
-            ref={titleRef}
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            onKeyDown={(e) => {
-              // "Done" just dismisses the keyboard — there may be more to edit
-              // (category, account). Saving is an explicit tap on Save.
-              if (e.key === "Enter") {
-                e.preventDefault();
-                e.currentTarget.blur();
-              }
-            }}
-            enterKeyHint="done"
-            placeholder={t("titlePlaceholder")}
-            className="mt-4 w-full rounded-xl bg-slate-800 px-3 py-2 text-center text-base text-slate-100 placeholder:text-slate-500 outline-none focus:ring-2 focus:ring-slate-600"
-          />
+          <div className="relative mt-4">
+            <input
+              ref={titleRef}
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              onFocus={() => setTitleFocused(true)}
+              onBlur={() => setTimeout(() => setTitleFocused(false), 150)}
+              onKeyDown={(e) => {
+                // "Done" just dismisses the keyboard — there may be more to edit
+                // (category, account). Saving is an explicit tap on Save.
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  e.currentTarget.blur();
+                }
+              }}
+              enterKeyHint="done"
+              placeholder={t("titlePlaceholder")}
+              className="w-full rounded-xl bg-slate-800 px-3 py-2 text-center text-base text-slate-100 placeholder:text-slate-500 outline-none focus:ring-2 focus:ring-slate-600"
+            />
+            {titleFocused && suggestions.length > 0 && (
+              <ul className="absolute left-0 right-0 top-full z-10 mt-1 overflow-hidden rounded-xl bg-slate-800 text-left shadow-lg ring-1 ring-slate-700">
+                {suggestions.map((s) => (
+                  <li key={s}>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault(); // keep focus so the click registers
+                        setTitle(s);
+                        setSuggestions([]);
+                      }}
+                      className="block w-full truncate px-3 py-2 text-sm text-slate-200 hover:bg-slate-700"
+                    >
+                      {s}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
+
+        {/* Date — enlarged, right after the title (defaults to today) */}
+        <section className="mb-4 flex items-center justify-center gap-2">
+          <label className="text-sm text-slate-500">{t("date")}</label>
+          <input
+            type="date"
+            value={toDateInputValue(date)}
+            onChange={(e) => setDate(fromDateInputValue(e.target.value))}
+            className="rounded-lg bg-slate-800 px-3 py-2 text-base text-slate-200 outline-none [color-scheme:dark]"
+          />
+        </section>
 
         {/* Category grid (hidden for transfers) or transfer destination */}
         {isTransfer ? (
@@ -205,25 +258,25 @@ export function QuickEntry({
             <p className="mb-2 text-xs uppercase tracking-wide text-slate-500">
               {t("category")}
             </p>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               {categories
                 .filter((c) => !c.archived)
                 .map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => setCategoryId(c.id)}
-                  className={
-                    "flex flex-col items-center gap-1 rounded-xl py-2 text-xs " +
-                    (categoryId === c.id
-                      ? "bg-slate-700 ring-2 ring-slate-300"
-                      : "bg-slate-800 text-slate-300")
-                  }
-                >
-                  <span className="text-xl">{c.icon}</span>
-                  <span className="truncate">{c.name}</span>
-                </button>
-              ))}
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setCategoryId(c.id)}
+                    className={
+                      "flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs " +
+                      (categoryId === c.id
+                        ? "bg-slate-700 ring-2 ring-slate-300"
+                        : "bg-slate-800 text-slate-300")
+                    }
+                  >
+                    <span className="text-base leading-none">{c.icon}</span>
+                    <span className="truncate">{c.name}</span>
+                  </button>
+                ))}
             </div>
           </section>
         )}
@@ -254,17 +307,8 @@ export function QuickEntry({
           </div>
         </section>
 
-        {/* Date (defaults to today) + optional note */}
+        {/* Optional note */}
         <section className="mt-4 space-y-2">
-          <div className="flex items-center gap-2 text-sm">
-            <label className="text-slate-500">{t("date")}</label>
-            <input
-              type="date"
-              value={toDateInputValue(date)}
-              onChange={(e) => setDate(fromDateInputValue(e.target.value))}
-              className="rounded-lg bg-slate-800 px-2 py-1 text-slate-200 outline-none [color-scheme:dark]"
-            />
-          </div>
           {showNote ? (
             <textarea
               value={note}

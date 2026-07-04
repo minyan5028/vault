@@ -10,6 +10,7 @@ import {
   collection,
   doc,
   getDocs,
+  limit,
   onSnapshot,
   orderBy,
   query,
@@ -111,6 +112,35 @@ export const transactionRepo = {
   async fetchMonth(ledgerId: string, yearMonth: string): Promise<Transaction[]> {
     const q = query(transactionsCol(ledgerId), where("yearMonth", "==", yearMonth));
     return sortActive((await getDocs(q)).docs);
+  },
+
+  /**
+   * Distinct historical titles starting with `prefix`, for entry autocomplete
+   * (recording the same shop again). Prefix match via a title range query
+   * (single-field index, no composite index needed).
+   */
+  async suggestTitles(ledgerId: string, prefix: string, max = 6): Promise<string[]> {
+    const p = prefix.trim();
+    if (!p) return [];
+    const q = query(
+      transactionsCol(ledgerId),
+      where("title", ">=", p),
+      where("title", "<=", p + ""),
+      orderBy("title"),
+      limit(30),
+    );
+    const snap = await getDocs(q);
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const d of snap.docs) {
+      const title = (d.data().title as string | undefined)?.trim();
+      if (title && !seen.has(title)) {
+        seen.add(title);
+        out.push(title);
+        if (out.length >= max) break;
+      }
+    }
+    return out;
   },
 
   /**
