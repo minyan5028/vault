@@ -216,6 +216,7 @@ Project documentation is organized into several living documents.
 | [docs/DATA_MODEL.md](docs/DATA_MODEL.md) | Persistence model — Firestore schema, indexes, money rules | ✅ draft |
 | [docs/UX.md](docs/UX.md) | UX specification — the 3-second quick-entry path | ✅ draft |
 | [docs/ADR/](docs/ADR/) | Architecture Decision Records | ✅ |
+| [docs/OPERATIONS.md](docs/OPERATIONS.md) | Setup, deploy, data import, new-project runbook | ✅ |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Product development roadmap | ✅ |
 | [docs/phase-1-tasks.md](docs/phase-1-tasks.md) | Phase 1 executable task list | ✅ |
 
