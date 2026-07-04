@@ -1,12 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { formatMoney } from "../../lib/money";
+import { formatMoney, toMinor, toMajor } from "../../lib/money";
 import { toDateInputValue, fromDateInputValue } from "../../lib/date";
 import { SEED_ACCOUNTS, SEED_CATEGORIES } from "../../data/fixtures";
 import type { EventType, Transaction } from "../../domain/types";
 import type { EntryDraft } from "../../data/transactionRepo";
-import { appendDigit, backspace } from "./amountInput";
-import { Numpad } from "./Numpad";
 import { LanguageToggle } from "../../components/LanguageToggle";
 
 const TYPES: EventType[] = ["expense", "income", "transfer"];
@@ -19,20 +17,41 @@ interface QuickEntryProps {
   onClose: () => void;
 }
 
+/** Sanitize typed input to a positive decimal with at most two places. */
+function sanitizeAmount(raw: string): string {
+  let v = raw.replace(/[^0-9.]/g, "");
+  const parts = v.split(".");
+  if (parts.length > 2) v = parts[0] + "." + parts.slice(1).join("");
+  const [int, dec] = v.split(".");
+  if (dec !== undefined) v = int + "." + dec.slice(0, 2);
+  return v;
+}
+
+function parseMinor(text: string): number {
+  const s = text.trim();
+  if (!s) return 0;
+  try {
+    const m = toMinor(s);
+    return m >= 0 ? m : 0;
+  } catch {
+    return 0;
+  }
+}
+
 /**
- * Quick Entry overlay — opened from the Timeline's FAB (see docs/UX.md).
- * Field order follows the user's habit: amount → title → category → account,
- * with date (defaults to today) and note as unobtrusive defaults.
+ * Quick Entry overlay (see docs/UX.md). Amount uses the OS numeric keyboard;
+ * the keyboard's "next" jumps to the title. Field order: amount → title →
+ * category → account, with date (today) and note as unobtrusive defaults.
  */
 export function QuickEntry({ initial, onSubmit, onDelete, onClose }: QuickEntryProps) {
   const { t, i18n } = useTranslation();
 
   const [type, setType] = useState<EventType>(initial?.type ?? "expense");
-  const [minor, setMinor] = useState(initial?.amount ?? 0);
+  const [amountText, setAmountText] = useState(initial ? String(toMajor(initial.amount)) : "");
   const [accountId, setAccountId] = useState(initial?.accountId ?? SEED_ACCOUNTS[0].id);
   const [toAccountId, setToAccountId] = useState(initial?.toAccountId ?? SEED_ACCOUNTS[4].id);
   const [categoryId, setCategoryId] = useState<string | null>(
-    initial ? initial.categoryId : SEED_CATEGORIES[0].id, // default most-frequent for new
+    initial ? initial.categoryId : SEED_CATEGORIES[0].id,
   );
   const [title, setTitle] = useState(initial?.title ?? "");
   const [date, setDate] = useState<Date>(() => initial?.date ?? new Date());
@@ -41,6 +60,7 @@ export function QuickEntry({ initial, onSubmit, onDelete, onClose }: QuickEntryP
   const [saved, setSaved] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
 
+  const minor = useMemo(() => parseMinor(amountText), [amountText]);
   const account = SEED_ACCOUNTS.find((a) => a.id === accountId)!;
   const currency = account.currency;
   const isTransfer = type === "transfer";
@@ -68,32 +88,14 @@ export function QuickEntry({ initial, onSubmit, onDelete, onClose }: QuickEntryP
       title: title.trim(),
       note: showNote ? note.trim() || null : null,
     });
-    // Brief ✓ confirmation, then return to the Timeline.
-    setSaved(true);
+    setSaved(true); // brief ✓ before returning to the Timeline
     setTimeout(onClose, 550);
   }
 
-  // Physical keyboard: digits type the amount, Backspace deletes, Enter saves,
-  // Escape closes. Ignored while a text field (title/note) is focused.
-  const saveRef = useRef(save);
-  saveRef.current = save;
+  // Esc closes the overlay.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        onClose();
-        return;
-      }
-      const el = document.activeElement;
-      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA")) return;
-      if (e.key >= "0" && e.key <= "9") {
-        setMinor((m) => appendDigit(m, Number(e.key)));
-        e.preventDefault();
-      } else if (e.key === "Backspace") {
-        setMinor((m) => backspace(m));
-        e.preventDefault();
-      } else if (e.key === "Enter") {
-        saveRef.current();
-      }
+      if (e.key === "Escape") onClose();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -141,20 +143,37 @@ export function QuickEntry({ initial, onSubmit, onDelete, onClose }: QuickEntryP
           ))}
         </div>
 
-        {/* Amount + title (the primary descriptor, right after the amount) */}
+        {/* Amount (OS numeric keyboard) + title */}
         <div className="py-6 text-center">
-          <div
-            className={
-              "text-5xl font-semibold tabular-nums " +
-              (minor > 0 ? "text-slate-50" : "text-slate-600")
-            }
-          >
-            {formatMoney(minor, currency, i18n.language)}
+          <input
+            inputMode="decimal"
+            enterKeyHint="next"
+            autoFocus
+            value={amountText}
+            onChange={(e) => setAmountText(sanitizeAmount(e.target.value))}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                titleRef.current?.focus();
+              }
+            }}
+            placeholder="0"
+            className="w-full bg-transparent text-center text-5xl font-semibold tabular-nums text-slate-50 placeholder:text-slate-600 outline-none"
+          />
+          <div className="mt-1 h-5 text-sm text-slate-500">
+            {minor > 0 ? formatMoney(minor, currency, i18n.language) : currency}
           </div>
           <input
             ref={titleRef}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                save();
+              }
+            }}
+            enterKeyHint="done"
             placeholder={t("titlePlaceholder")}
             className="mt-4 w-full rounded-xl bg-slate-800 px-3 py-2 text-center text-base text-slate-100 placeholder:text-slate-500 outline-none focus:ring-2 focus:ring-slate-600"
           />
@@ -248,19 +267,14 @@ export function QuickEntry({ initial, onSubmit, onDelete, onClose }: QuickEntryP
           )}
         </section>
 
-        {/* Numpad + Save */}
+        {/* Save / Delete */}
         <section className="mt-5">
-          <Numpad
-            onDigit={(d) => setMinor((m) => appendDigit(m, d))}
-            onBackspace={() => setMinor((m) => backspace(m))}
-            onNext={() => titleRef.current?.focus()}
-          />
           <button
             type="button"
             onClick={save}
             disabled={!canSave}
             className={
-              "mt-3 h-14 w-full rounded-xl text-lg font-semibold transition-colors " +
+              "h-14 w-full rounded-xl text-lg font-semibold transition-colors " +
               (canSave
                 ? "bg-emerald-500 text-slate-900 active:bg-emerald-400"
                 : "cursor-not-allowed bg-slate-800 text-slate-600")
