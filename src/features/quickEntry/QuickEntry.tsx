@@ -168,9 +168,11 @@ export function QuickEntry({ initial, onSubmit, onDelete, onClose }: QuickEntryP
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             onKeyDown={(e) => {
+              // "Done" just dismisses the keyboard — there may be more to edit
+              // (category, account). Saving is an explicit tap on Save.
               if (e.key === "Enter") {
                 e.preventDefault();
-                save();
+                e.currentTarget.blur();
               }
             }}
             enterKeyHint="done"
