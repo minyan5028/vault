@@ -18,3 +18,17 @@ export function fromDateInputValue(value: string): Date {
   const [y, m, d] = value.split("-").map(Number);
   return new Date(y, m - 1, d);
 }
+
+/** Shift a `yyyy-mm` key by whole months. */
+export function shiftMonth(yearMonth: string, delta: number): string {
+  const [y, m] = yearMonth.split("-").map(Number);
+  return yearMonthOf(new Date(y, m - 1 + delta, 1));
+}
+
+/** Locale month heading for a `yyyy-mm` key (e.g. "2026年7月" / "July 2026"). */
+export function monthLabel(yearMonth: string, locale: string): string {
+  const [y, m] = yearMonth.split("-").map(Number);
+  return new Intl.DateTimeFormat(locale, { year: "numeric", month: "long" }).format(
+    new Date(y, m - 1, 1),
+  );
+}

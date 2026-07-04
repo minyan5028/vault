@@ -1,7 +1,13 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { formatMoney } from "../../lib/money";
-import { toDateInputValue, fromDateInputValue, yearMonthOf } from "../../lib/date";
+import {
+  toDateInputValue,
+  fromDateInputValue,
+  yearMonthOf,
+  shiftMonth,
+  monthLabel,
+} from "../../lib/date";
 import { useMonthTransactions } from "../../data/useMonthTransactions";
 import type { Account, Category, Transaction } from "../../domain/types";
 import { LanguageToggle } from "../../components/LanguageToggle";
@@ -19,12 +25,14 @@ export function Timeline({
   categories,
   onEdit,
   onManage,
+  onStats,
 }: {
   ledgerId: string;
   accounts: Account[];
   categories: Category[];
   onEdit: (tx: Transaction) => void;
   onManage: () => void;
+  onStats: () => void;
 }) {
   const { t, i18n } = useTranslation();
   const locale = i18n.language;
@@ -42,6 +50,13 @@ export function Timeline({
           <span className="text-lg font-semibold tracking-tight">{t("appName")}</span>
           <div className="flex items-center gap-2">
             <LanguageToggle />
+            <button
+              type="button"
+              onClick={onStats}
+              className="rounded-full bg-slate-800 px-2 py-1 text-xs text-slate-400"
+            >
+              {t("stats")}
+            </button>
             <button
               type="button"
               onClick={onManage}
@@ -226,18 +241,6 @@ function groupByDay(txns: Transaction[]): [string, Transaction[]][] {
     else map.set(key, [e]);
   }
   return [...map.entries()];
-}
-
-function shiftMonth(ym: string, delta: number): string {
-  const [y, m] = ym.split("-").map(Number);
-  return yearMonthOf(new Date(y, m - 1 + delta, 1));
-}
-
-function monthLabel(ym: string, locale: string): string {
-  const [y, m] = ym.split("-").map(Number);
-  return new Intl.DateTimeFormat(locale, { year: "numeric", month: "long" }).format(
-    new Date(y, m - 1, 1),
-  );
 }
 
 function dayLabel(key: string, locale: string, t: (k: "today" | "yesterday") => string): string {

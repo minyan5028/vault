@@ -9,6 +9,7 @@ import { useLedgerData } from "./data/useLedgerData";
 import { Timeline } from "./features/timeline/Timeline";
 import { QuickEntry } from "./features/quickEntry/QuickEntry";
 import { Manage } from "./features/manage/Manage";
+import { Stats } from "./features/stats/Stats";
 import { SignIn } from "./features/auth/SignIn";
 
 /** Auth gate: splash while resolving, sign-in when signed out, else the app. */
@@ -27,6 +28,7 @@ function AuthedApp({ user }: { user: User }) {
   const [ledgerId, setLedgerId] = useState<string | null>(null);
   const [editor, setEditor] = useState<Editor>(null);
   const [manageOpen, setManageOpen] = useState(false);
+  const [statsOpen, setStatsOpen] = useState(false);
   const [undoId, setUndoId] = useState<string | null>(null);
   const { accounts, categories } = useLedgerData(ledgerId ?? "");
 
@@ -55,6 +57,7 @@ function AuthedApp({ user }: { user: User }) {
         categories={categories}
         onEdit={(tx) => setEditor({ tx })}
         onManage={() => setManageOpen(true)}
+        onStats={() => setStatsOpen(true)}
       />
 
       {manageOpen && (
@@ -66,7 +69,15 @@ function AuthedApp({ user }: { user: User }) {
         />
       )}
 
-      {!editor && !manageOpen && (
+      {statsOpen && (
+        <Stats
+          ledgerId={ledgerId}
+          categories={categories}
+          onClose={() => setStatsOpen(false)}
+        />
+      )}
+
+      {!editor && !manageOpen && !statsOpen && (
         <button
           type="button"
           onClick={() => setEditor({})}
