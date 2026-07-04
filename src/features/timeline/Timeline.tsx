@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { formatMoney } from "../../lib/money";
 import {
@@ -24,6 +24,7 @@ export function Timeline({
   accounts,
   categories,
   onEdit,
+  onDelete,
   onManage,
   onStats,
 }: {
@@ -31,6 +32,7 @@ export function Timeline({
   accounts: Account[];
   categories: Category[];
   onEdit: (tx: Transaction) => void;
+  onDelete: (tx: Transaction) => void;
   onManage: () => void;
   onStats: () => void;
 }) {
@@ -131,6 +133,7 @@ export function Timeline({
                         accounts={accounts}
                         categories={categories}
                         onEdit={onEdit}
+                        onDelete={onDelete}
                       />
                     ))}
                   </ul>
@@ -171,19 +174,24 @@ function SummaryCell({
   );
 }
 
+const SWIPE_DELETE_THRESHOLD = 80;
+
 function EntryRow({
   tx,
   locale,
   accounts,
   categories,
   onEdit,
+  onDelete,
 }: {
   tx: Transaction;
   locale: string;
   accounts: Account[];
   categories: Category[];
   onEdit: (tx: Transaction) => void;
+  onDelete: (tx: Transaction) => void;
 }) {
+  const { t } = useTranslation();
   const category = categories.find((c) => c.id === tx.categoryId);
   const account = accounts.find((a) => a.id === tx.accountId);
   const toAccount = accounts.find((a) => a.id === tx.toAccountId);
@@ -199,12 +207,50 @@ function EntryRow({
         ? "text-rose-300"
         : "text-slate-400";
 
+  // Swipe left to delete; a small move is a tap (edit). touch-action: pan-y lets
+  // the list still scroll vertically.
+  const [dx, setDx] = useState(0);
+  const startX = useRef(0);
+  const dragging = useRef(false);
+  const swiped = useRef(false);
+
   return (
-    <li>
+    <li className="relative overflow-hidden">
+      <div className="absolute inset-0 flex items-center justify-end bg-rose-600 pr-4 text-sm font-medium text-white">
+        {t("delete")}
+      </div>
       <button
         type="button"
-        onClick={() => onEdit(tx)}
-        className="flex w-full items-center gap-3 py-2 text-left active:bg-slate-800/50"
+        style={{ transform: `translateX(${dx}px)`, touchAction: "pan-y" }}
+        onPointerDown={(e) => {
+          startX.current = e.clientX;
+          dragging.current = true;
+          swiped.current = false;
+          e.currentTarget.setPointerCapture(e.pointerId);
+        }}
+        onPointerMove={(e) => {
+          if (!dragging.current) return;
+          const d = Math.max(-120, Math.min(0, e.clientX - startX.current));
+          if (Math.abs(d) > 5) swiped.current = true;
+          setDx(d);
+        }}
+        onPointerUp={() => {
+          dragging.current = false;
+          if (dx < -SWIPE_DELETE_THRESHOLD) onDelete(tx);
+          setDx(0);
+        }}
+        onPointerCancel={() => {
+          dragging.current = false;
+          setDx(0);
+        }}
+        onClick={() => {
+          if (swiped.current) {
+            swiped.current = false;
+            return;
+          }
+          onEdit(tx);
+        }}
+        className="relative flex w-full items-center gap-3 bg-slate-900 py-2 text-left"
       >
         <span className="text-xl">{tx.type === "transfer" ? "↔️" : category?.icon}</span>
         <div className="min-w-0 flex-1">

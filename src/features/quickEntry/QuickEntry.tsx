@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { formatMoney, toMinor, toMajor } from "../../lib/money";
 import { toDateInputValue, fromDateInputValue } from "../../lib/date";
 import type { Account, Category, EventType, Transaction } from "../../domain/types";
-import { transactionRepo, type EntryDraft } from "../../data/transactionRepo";
+import { transactionRepo, type EntryDraft, type TitleSuggestion } from "../../data/transactionRepo";
 import { LanguageToggle } from "../../components/LanguageToggle";
 
 const TYPES: EventType[] = ["expense", "income", "transfer"];
@@ -71,7 +71,7 @@ export function QuickEntry({
   const [note, setNote] = useState(initial?.note ?? "");
   const [saved, setSaved] = useState(false);
   const [titleFocused, setTitleFocused] = useState(false);
-  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [suggestions, setSuggestions] = useState<TitleSuggestion[]>([]);
   const titleRef = useRef<HTMLInputElement>(null);
 
   // Title autocomplete: suggest past titles (same shop) as you type.
@@ -83,7 +83,7 @@ export function QuickEntry({
     const h = setTimeout(() => {
       transactionRepo
         .suggestTitles(ledgerId, title, 6)
-        .then((s) => setSuggestions(s.filter((x) => x !== title)))
+        .then((s) => setSuggestions(s.filter((x) => x.title !== title)))
         .catch(() => setSuggestions([]));
     }, 200);
     return () => clearTimeout(h);
@@ -214,17 +214,22 @@ export function QuickEntry({
             {titleFocused && suggestions.length > 0 && (
               <ul className="absolute left-0 right-0 top-full z-10 mt-1 overflow-hidden rounded-xl bg-slate-800 text-left shadow-lg ring-1 ring-slate-700">
                 {suggestions.map((s) => (
-                  <li key={s}>
+                  <li key={s.title}>
                     <button
                       type="button"
                       onMouseDown={(e) => {
                         e.preventDefault(); // keep focus so the click registers
-                        setTitle(s);
+                        // Reuse the last-used shape for this title.
+                        setTitle(s.title);
+                        setType(s.type);
+                        setAccountId(s.accountId);
+                        if (s.categoryId) setCategoryId(s.categoryId);
+                        if (s.toAccountId) setToAccountId(s.toAccountId);
                         setSuggestions([]);
                       }}
                       className="block w-full truncate px-3 py-2 text-sm text-slate-200 hover:bg-slate-700"
                     >
-                      {s}
+                      {s.title}
                     </button>
                   </li>
                 ))}

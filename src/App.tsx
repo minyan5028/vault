@@ -49,6 +49,11 @@ function AuthedApp({ user }: { user: User }) {
 
   if (!ledgerId) return <Splash />;
 
+  const deleteTx = (id: string) => {
+    void transactionRepo.softDelete(ledgerId, id);
+    setUndoId(id);
+  };
+
   return (
     <>
       <Timeline
@@ -56,6 +61,7 @@ function AuthedApp({ user }: { user: User }) {
         accounts={accounts}
         categories={categories}
         onEdit={(tx) => setEditor({ tx })}
+        onDelete={(tx) => deleteTx(tx.id)}
         onManage={() => setManageOpen(true)}
         onStats={() => setStatsOpen(true)}
       />
@@ -99,15 +105,7 @@ function AuthedApp({ user }: { user: User }) {
             if (editor.tx) transactionRepo.update(ledgerId, editor.tx.id, draft);
             else void transactionRepo.add(ledgerId, { ...draft, createdBy: user.uid });
           }}
-          onDelete={
-            editor.tx
-              ? () => {
-                  const id = editor.tx!.id;
-                  void transactionRepo.softDelete(ledgerId, id);
-                  setUndoId(id);
-                }
-              : undefined
-          }
+          onDelete={editor.tx ? () => deleteTx(editor.tx!.id) : undefined}
           onClose={() => setEditor(null)}
         />
       )}

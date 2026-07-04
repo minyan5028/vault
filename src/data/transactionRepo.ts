@@ -45,6 +45,15 @@ export interface NewTransactionInput {
 /** What Quick Entry produces; the repo/caller adds `createdBy`. */
 export type EntryDraft = Omit<NewTransactionInput, "createdBy">;
 
+/** A title autocomplete suggestion, carrying the last-used shape for that title. */
+export interface TitleSuggestion {
+  title: string;
+  type: EventType;
+  categoryId: string | null;
+  accountId: string;
+  toAccountId: string | null;
+}
+
 function transactionsCol(ledgerId: string) {
   return collection(db, "ledgers", ledgerId, "transactions");
 }
@@ -119,7 +128,7 @@ export const transactionRepo = {
    * (recording the same shop again). Prefix match via a title range query
    * (single-field index, no composite index needed).
    */
-  async suggestTitles(ledgerId: string, prefix: string, max = 6): Promise<string[]> {
+  async suggestTitles(ledgerId: string, prefix: string, max = 6): Promise<TitleSuggestion[]> {
     const p = prefix.trim();
     if (!p) return [];
     const q = query(
@@ -130,17 +139,26 @@ export const transactionRepo = {
       limit(30),
     );
     const snap = await getDocs(q);
-    const seen = new Set<string>();
-    const out: string[] = [];
+    // Keep the most recent transaction per distinct title (its category/account).
+    const best = new Map<string, Transaction>();
     for (const d of snap.docs) {
-      const title = (d.data().title as string | undefined)?.trim();
-      if (title && !seen.has(title)) {
-        seen.add(title);
-        out.push(title);
-        if (out.length >= max) break;
-      }
+      const tx = fromSnapshot(d);
+      if (tx.deletedAt) continue;
+      const title = tx.title.trim();
+      if (!title) continue;
+      const cur = best.get(title);
+      if (!cur || tx.date.getTime() > cur.date.getTime()) best.set(title, tx);
     }
-    return out;
+    return [...best.values()]
+      .sort((a, b) => b.date.getTime() - a.date.getTime())
+      .slice(0, max)
+      .map((tx) => ({
+        title: tx.title.trim(),
+        type: tx.type,
+        categoryId: tx.categoryId,
+        accountId: tx.accountId,
+        toAccountId: tx.toAccountId,
+      }));
   },
 
   /**
