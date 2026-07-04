@@ -8,6 +8,7 @@ import { transactionRepo } from "./data/transactionRepo";
 import { useLedgerData } from "./data/useLedgerData";
 import { Timeline } from "./features/timeline/Timeline";
 import { QuickEntry } from "./features/quickEntry/QuickEntry";
+import { Manage } from "./features/manage/Manage";
 import { SignIn } from "./features/auth/SignIn";
 
 /** Auth gate: splash while resolving, sign-in when signed out, else the app. */
@@ -25,6 +26,7 @@ function AuthedApp({ user }: { user: User }) {
   const { t } = useTranslation();
   const [ledgerId, setLedgerId] = useState<string | null>(null);
   const [editor, setEditor] = useState<Editor>(null);
+  const [manageOpen, setManageOpen] = useState(false);
   const [undoId, setUndoId] = useState<string | null>(null);
   const { accounts, categories } = useLedgerData(ledgerId ?? "");
 
@@ -52,9 +54,19 @@ function AuthedApp({ user }: { user: User }) {
         accounts={accounts}
         categories={categories}
         onEdit={(tx) => setEditor({ tx })}
+        onManage={() => setManageOpen(true)}
       />
 
-      {!editor && (
+      {manageOpen && (
+        <Manage
+          ledgerId={ledgerId}
+          accounts={accounts}
+          categories={categories}
+          onClose={() => setManageOpen(false)}
+        />
+      )}
+
+      {!editor && !manageOpen && (
         <button
           type="button"
           onClick={() => setEditor({})}

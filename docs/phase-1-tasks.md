@@ -105,11 +105,10 @@ Foundational rules for all tasks (see ADRs):
 
 ## Milestone 5 — Manage the building blocks
 
-- [ ] **P1-18** Category management: list, add, rename, archive (keep history);
-  set icon + sort order. — M
+- [x] **P1-18** Category management: list, add, rename, archive (keep history);
+  set icon. — M ✅ (Manage screen)
   - _Accept:_ can add a category and use it immediately in entry.
-- [ ] **P1-19** Account management: list, add, rename, archive; free-form name +
-  icon + sort order. — M
+- [x] **P1-19** Account management: list, add, rename, archive; free-form name. — M ✅
   - _Accept:_ can add an account; archived ones hidden from pickers.
 
 ---

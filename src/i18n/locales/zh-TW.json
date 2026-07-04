@@ -28,6 +28,15 @@
   "delete": "刪除",
   "deleted": "已刪除",
   "undo": "復原",
+  "manage": "管理",
+  "accounts": "帳戶",
+  "categories": "分類",
+  "add": "新增",
+  "archive": "封存",
+  "unarchive": "取消封存",
+  "archived": "已封存",
+  "namePlaceholder": "名稱",
+  "iconPlaceholder": "圖示",
   "signIn": "使用 Google 登入",
   "signOut": "登出"
 }

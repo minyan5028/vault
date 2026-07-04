@@ -18,11 +18,13 @@ export function Timeline({
   accounts,
   categories,
   onEdit,
+  onManage,
 }: {
   ledgerId: string;
   accounts: Account[];
   categories: Category[];
   onEdit: (tx: Transaction) => void;
+  onManage: () => void;
 }) {
   const { t, i18n } = useTranslation();
   const locale = i18n.language;
@@ -40,6 +42,13 @@ export function Timeline({
           <span className="text-lg font-semibold tracking-tight">{t("appName")}</span>
           <div className="flex items-center gap-2">
             <LanguageToggle />
+            <button
+              type="button"
+              onClick={onManage}
+              className="rounded-full bg-slate-800 px-2 py-1 text-xs text-slate-400"
+            >
+              {t("manage")}
+            </button>
             <button
               type="button"
               onClick={() => void signOutUser()}

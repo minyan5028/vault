@@ -28,6 +28,15 @@
   "delete": "Delete",
   "deleted": "Deleted",
   "undo": "Undo",
+  "manage": "Manage",
+  "accounts": "Accounts",
+  "categories": "Categories",
+  "add": "Add",
+  "archive": "Archive",
+  "unarchive": "Unarchive",
+  "archived": "Archived",
+  "namePlaceholder": "Name",
+  "iconPlaceholder": "Icon",
   "signIn": "Sign in with Google",
   "signOut": "Sign out"
 }
