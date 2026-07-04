@@ -14,3 +14,7 @@ build/
 # Firebase
 .firebase/
 firebase-debug.log
+
+# Service account key (SECRET — never commit)
+serviceAccountKey.json
+*serviceAccount*.json

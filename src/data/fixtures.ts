@@ -24,7 +24,7 @@ export const SEED_ACCOUNTS: AccountFixture[] = [
   { id: "general", name: "General", currency: "TWD" },
   { id: "dream", name: "Dream", currency: "TWD" },
   { id: "fixed", name: "Fixed", currency: "TWD" },
-  { id: "couples", name: "Couple's", currency: "TWD" },
+  { id: "couple-s", name: "Couple's", currency: "TWD" },
   { id: "savings", name: "Savings", currency: "TWD" },
   { id: "investment", name: "Investment", currency: "TWD" },
 ];
