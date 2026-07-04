@@ -73,6 +73,14 @@ function fromSnapshot(snap: QueryDocumentSnapshot<DocumentData>): Transaction {
   };
 }
 
+/** Map docs → Transactions, drop soft-deleted, newest first. */
+function sortActive(docs: QueryDocumentSnapshot<DocumentData>[]): Transaction[] {
+  return docs
+    .map(fromSnapshot)
+    .filter((t) => t.deletedAt === null)
+    .sort((a, b) => b.date.getTime() - a.date.getTime());
+}
+
 export const transactionRepo = {
   /** Record a Financial Event. Returns the new document id. */
   async add(ledgerId: string, input: NewTransactionInput): Promise<string> {
@@ -99,6 +107,12 @@ export const transactionRepo = {
     return snap.docs.map(fromSnapshot);
   },
 
+  /** One-shot fetch for a month (prefers server when online). */
+  async fetchMonth(ledgerId: string, yearMonth: string): Promise<Transaction[]> {
+    const q = query(transactionsCol(ledgerId), where("yearMonth", "==", yearMonth));
+    return sortActive((await getDocs(q)).docs);
+  },
+
   /**
    * Live subscription to a month, updating on every change (and offline via the
    * local cache). Uses an equality-only query so no composite index is needed
@@ -111,13 +125,11 @@ export const transactionRepo = {
     cb: (txns: Transaction[]) => void,
   ): Unsubscribe {
     const q = query(transactionsCol(ledgerId), where("yearMonth", "==", yearMonth));
-    return onSnapshot(q, (snap) => {
-      const txns = snap.docs
-        .map(fromSnapshot)
-        .filter((t) => t.deletedAt === null)
-        .sort((a, b) => b.date.getTime() - a.date.getTime());
-      cb(txns);
-    });
+    return onSnapshot(
+      q,
+      (snap) => cb(sortActive(snap.docs)),
+      (err) => console.error("subscribeByMonth", err),
+    );
   },
 
   /** Edit in place (loose event model): update fields and bump updatedAt. */
