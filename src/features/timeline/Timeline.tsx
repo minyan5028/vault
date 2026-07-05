@@ -9,7 +9,9 @@ import {
   monthLabel,
 } from "../../lib/date";
 import { useMonthTransactions } from "../../data/useMonthTransactions";
-import type { Account, Category, Transaction } from "../../domain/types";
+import type { Account, Category, EventType, Transaction } from "../../domain/types";
+
+const FILTERS: ("all" | EventType)[] = ["all", "expense", "income", "transfer"];
 
 const BASE_CURRENCY = "TWD";
 
@@ -37,10 +39,15 @@ export function Timeline({
   const { t, i18n } = useTranslation();
   const locale = i18n.language;
   const [month, setMonth] = useState<string>(() => yearMonthOf(new Date()));
+  const [filter, setFilter] = useState<"all" | EventType>("all");
   const txns = useMonthTransactions(ledgerId, month);
 
   const summary = useMemo(() => totals(txns), [txns]);
-  const groups = useMemo(() => groupByDay(txns), [txns]);
+  const filtered = useMemo(
+    () => (filter === "all" ? txns : txns.filter((t) => t.type === filter)),
+    [txns, filter],
+  );
+  const groups = useMemo(() => groupByDay(filtered), [filtered]);
 
   return (
     <main className="min-h-dvh bg-slate-900 text-slate-100">
@@ -94,8 +101,25 @@ export function Timeline({
           <SummaryCell label={t("total")} minor={summary.net} tone="total" locale={locale} />
         </div>
 
+        {/* Type filter */}
+        <div className="mt-3 flex gap-2 text-xs">
+          {FILTERS.map((f) => (
+            <button
+              key={f}
+              type="button"
+              onClick={() => setFilter(f)}
+              className={
+                "rounded-full px-3 py-1 " +
+                (filter === f ? "bg-slate-100 text-slate-900" : "bg-slate-800 text-slate-400")
+              }
+            >
+              {f === "all" ? t("all") : t(`type_${f}` as "type_expense")}
+            </button>
+          ))}
+        </div>
+
         {/* Day-grouped list */}
-        {txns.length === 0 ? (
+        {filtered.length === 0 ? (
           <div className="mt-20 text-center text-slate-600">
             <div className="text-4xl">💰</div>
             <p className="mt-3 text-sm">{t("empty")}</p>

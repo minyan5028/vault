@@ -3,6 +3,7 @@
   "tagline": "Your personal finance OS.",
   "scaffoldNote": "Phase 1 scaffold. Money engine online — e.g. {{example}}.",
   "language": "Language",
+  "all": "All",
   "type_expense": "Expense",
   "type_income": "Income",
   "type_transfer": "Transfer",

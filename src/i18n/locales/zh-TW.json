@@ -3,6 +3,7 @@
   "tagline": "你的個人財務作業系統。",
   "scaffoldNote": "Phase 1 骨架。金額引擎已上線 — 例如 {{example}}。",
   "language": "語言",
+  "all": "全部",
   "type_expense": "支出",
   "type_income": "收入",
   "type_transfer": "轉帳",
