@@ -177,6 +177,7 @@ export function EntryRow({
   categories,
   onEdit,
   onDelete,
+  runningBalance,
 }: {
   tx: Transaction;
   locale: string;
@@ -184,6 +185,8 @@ export function EntryRow({
   categories: Category[];
   onEdit: (tx: Transaction) => void;
   onDelete: (tx: Transaction) => void;
+  /** Optional per-row account balance shown under the amount (account detail). */
+  runningBalance?: number;
 }) {
   const { t } = useTranslation();
   const category = categories.find((c) => c.id === tx.categoryId);
@@ -251,10 +254,17 @@ export function EntryRow({
           <p className="truncate text-sm text-slate-200">{label}</p>
           <p className="text-xs text-slate-500">{account?.name}</p>
         </div>
-        <span className={"text-sm tabular-nums " + amountColor}>
-          {sign}
-          {formatMoney(tx.amount, tx.currency, locale)}
-        </span>
+        <div className="text-right">
+          <span className={"text-sm tabular-nums " + amountColor}>
+            {sign}
+            {formatMoney(tx.amount, tx.currency, locale)}
+          </span>
+          {runningBalance !== undefined && (
+            <span className="block text-xs tabular-nums text-slate-500">
+              {formatMoney(runningBalance, tx.currency, locale)}
+            </span>
+          )}
+        </div>
       </button>
     </li>
   );

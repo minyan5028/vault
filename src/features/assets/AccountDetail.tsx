@@ -1,14 +1,24 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { formatMoney } from "../../lib/money";
 import { yearMonthOf, shiftMonth, monthLabel } from "../../lib/date";
 import { useMonthTransactions } from "../../data/useMonthTransactions";
+import { transactionRepo } from "../../data/transactionRepo";
 import type { Account, Category, Transaction } from "../../domain/types";
 import { EntryRow, groupByDay, dayLabel } from "../timeline/Timeline";
 
 const BASE_CURRENCY = "TWD";
 
-/** One account's transactions — the Timeline scoped to a single account (v1). */
+/** Effect of a transaction on this account's balance (minor units, signed). */
+function effectOn(tx: Transaction, accId: string): number {
+  let e = 0;
+  if (tx.accountId === accId) e += tx.type === "income" ? tx.baseAmount : -tx.baseAmount;
+  if (tx.type === "transfer" && tx.toAccountId === accId) e += tx.baseAmount;
+  return e;
+}
+
+/** One account's transactions — the Timeline scoped to a single account, with
+ *  per-row running balance (v2). */
 export function AccountDetail({
   ledgerId,
   account,
@@ -31,12 +41,26 @@ export function AccountDetail({
   const { t, i18n } = useTranslation();
   const locale = i18n.language;
   const [month, setMonth] = useState<string>(() => yearMonthOf(new Date()));
-  const txns = useMonthTransactions(ledgerId, month);
+  const [allTxns, setAllTxns] = useState<Transaction[] | null>(null);
+  const monthTxns = useMonthTransactions(ledgerId, month);
+
+  // One-shot history (for the balance carried into the viewed month).
+  useEffect(() => {
+    let cancelled = false;
+    transactionRepo
+      .fetchAll(ledgerId)
+      .then((x) => !cancelled && setAllTxns(x))
+      .catch(console.error);
+    return () => {
+      cancelled = true;
+    };
+  }, [ledgerId]);
 
   const mine = useMemo(
-    () => txns.filter((tx) => tx.accountId === account.id || tx.toAccountId === account.id),
-    [txns, account.id],
+    () => monthTxns.filter((tx) => tx.accountId === account.id || tx.toAccountId === account.id),
+    [monthTxns, account.id],
   );
+
   const { deposits, withdrawals } = useMemo(() => {
     let dep = 0;
     let wd = 0;
@@ -44,11 +68,27 @@ export function AccountDetail({
       if (tx.toAccountId === account.id && tx.type === "transfer") dep += tx.baseAmount;
       if (tx.accountId === account.id) {
         if (tx.type === "income") dep += tx.baseAmount;
-        else wd += tx.baseAmount; // expense or transfer-out
+        else wd += tx.baseAmount;
       }
     }
     return { deposits: dep, withdrawals: wd };
   }, [mine, account.id]);
+
+  // Running balance per row: opening + all prior-month effects, then cumulate
+  // within the month in chronological order (live, so edits reflect).
+  const runningMap = useMemo(() => {
+    const map = new Map<string, number>();
+    if (allTxns === null) return map;
+    let running = account.openingBalance;
+    for (const tx of allTxns) if (tx.yearMonth < month) running += effectOn(tx, account.id);
+    const asc = [...mine].sort((a, b) => a.date.getTime() - b.date.getTime());
+    for (const tx of asc) {
+      running += effectOn(tx, account.id);
+      map.set(tx.id, running);
+    }
+    return map;
+  }, [allTxns, mine, month, account.id, account.openingBalance]);
+
   const groups = groupByDay(mine);
 
   return (
@@ -66,7 +106,6 @@ export function AccountDetail({
           <span className="text-lg font-semibold tracking-tight">{account.name}</span>
         </header>
 
-        {/* Month selector */}
         <div className="flex items-center justify-between py-1 text-slate-300">
           <button
             type="button"
@@ -87,7 +126,6 @@ export function AccountDetail({
           </button>
         </div>
 
-        {/* Deposits / Withdrawals / Balance */}
         <div className="mt-1 grid grid-cols-3 gap-2 border-y border-slate-800 py-3 text-center">
           <Cell label={t("deposits")} minor={deposits} color="text-sky-400" locale={locale} />
           <Cell label={t("withdrawals")} minor={withdrawals} color="text-rose-400" locale={locale} />
@@ -113,6 +151,7 @@ export function AccountDetail({
                       categories={categories}
                       onEdit={onEdit}
                       onDelete={onDelete}
+                      runningBalance={runningMap.get(e.id)}
                     />
                   ))}
                 </ul>
