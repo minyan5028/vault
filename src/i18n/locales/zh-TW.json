@@ -46,6 +46,8 @@
   "uncategorized": "未分類",
   "accounts": "帳戶",
   "categories": "分類",
+  "expenseCategories": "支出類別",
+  "incomeCategories": "收入類別",
   "add": "新增",
   "archive": "封存",
   "unarchive": "取消封存",

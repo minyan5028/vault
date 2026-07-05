@@ -20,6 +20,15 @@ export const DEFAULT_ACCOUNTS: DefaultAccount[] = [
   { id: "bank", name: "Bank" },
 ];
 
+// A small generic starter set of income categories.
+export const DEFAULT_INCOME_CATEGORIES: DefaultCategory[] = [
+  { id: "salary", name: "Salary", icon: "💰" },
+  { id: "bonus", name: "Bonus", icon: "🎁" },
+  { id: "refund", name: "Refund", icon: "🔁" },
+  { id: "interest", name: "Interest", icon: "🏦" },
+  { id: "income-other", name: "Other", icon: "📦" },
+];
+
 // A generic starter set of expense categories, most-common first.
 export const DEFAULT_CATEGORIES: DefaultCategory[] = [
   { id: "food", name: "Food", icon: "🍜" },

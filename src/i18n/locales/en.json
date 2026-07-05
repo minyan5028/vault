@@ -46,6 +46,8 @@
   "uncategorized": "Uncategorized",
   "accounts": "Accounts",
   "categories": "Categories",
+  "expenseCategories": "Expense categories",
+  "incomeCategories": "Income categories",
   "add": "Add",
   "archive": "Archive",
   "unarchive": "Unarchive",

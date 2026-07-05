@@ -1,7 +1,7 @@
 import { doc, getDoc, serverTimestamp, setDoc, writeBatch } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import { db } from "../lib/firebase";
-import { DEFAULT_ACCOUNTS, DEFAULT_CATEGORIES } from "./defaults";
+import { DEFAULT_ACCOUNTS, DEFAULT_CATEGORIES, DEFAULT_INCOME_CATEGORIES } from "./defaults";
 
 /**
  * Ensure the signed-in user has a `users/{uid}` doc and a personal Ledger.
@@ -47,6 +47,16 @@ export async function provisionPersonalLedger(user: User): Promise<string> {
         name: c.name,
         icon: c.icon,
         type: "expense",
+        parentId: null,
+        archived: false,
+        sortOrder: i,
+      }),
+    );
+    DEFAULT_INCOME_CATEGORIES.forEach((c, i) =>
+      batch.set(doc(db, "ledgers", ledgerId, "categories", c.id), {
+        name: c.name,
+        icon: c.icon,
+        type: "income",
         parentId: null,
         archived: false,
         sortOrder: i,

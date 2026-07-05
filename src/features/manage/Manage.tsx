@@ -44,19 +44,49 @@ export function Manage({
           onAdd={(name) => accountRepo.add(ledgerId, { name, sortOrder: accounts.length })}
         />
 
-        {/* Categories */}
+        {/* Expense categories */}
         <h2 className="mb-2 mt-8 text-xs uppercase tracking-wide text-slate-500">
-          {t("categories")}
+          {t("expenseCategories")}
         </h2>
         <ul className="mb-3 space-y-2">
-          {categories.map((c) => (
-            <CategoryRow key={c.id} ledgerId={ledgerId} category={c} />
-          ))}
+          {categories
+            .filter((c) => c.type === "expense")
+            .map((c) => (
+              <CategoryRow key={c.id} ledgerId={ledgerId} category={c} />
+            ))}
         </ul>
         <AddRow
           withIcon
           onAdd={(name, icon) =>
-            categoryRepo.add(ledgerId, { name, icon: icon || null, sortOrder: categories.length })
+            categoryRepo.add(ledgerId, {
+              name,
+              icon: icon || null,
+              type: "expense",
+              sortOrder: categories.filter((c) => c.type === "expense").length,
+            })
+          }
+        />
+
+        {/* Income categories */}
+        <h2 className="mb-2 mt-8 text-xs uppercase tracking-wide text-slate-500">
+          {t("incomeCategories")}
+        </h2>
+        <ul className="mb-3 space-y-2">
+          {categories
+            .filter((c) => c.type === "income")
+            .map((c) => (
+              <CategoryRow key={c.id} ledgerId={ledgerId} category={c} />
+            ))}
+        </ul>
+        <AddRow
+          withIcon
+          onAdd={(name, icon) =>
+            categoryRepo.add(ledgerId, {
+              name,
+              icon: icon || null,
+              type: "income",
+              sortOrder: categories.filter((c) => c.type === "income").length,
+            })
           }
         />
       </div>

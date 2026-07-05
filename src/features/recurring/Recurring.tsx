@@ -186,7 +186,10 @@ function RuleForm({
             <button
               key={ty}
               type="button"
-              onClick={() => setType(ty)}
+              onClick={() => {
+                setType(ty);
+                setCategoryId("");
+              }}
               className={
                 "rounded-lg py-2 font-medium " +
                 (type === ty ? "bg-slate-100 text-slate-900" : "text-slate-300")
@@ -219,7 +222,7 @@ function RuleForm({
           <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className={field}>
             <option value="">— {t("category")} —</option>
             {categories
-              .filter((c) => !c.archived)
+              .filter((c) => !c.archived && c.type === type)
               .map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.icon ? c.icon + " " : ""}

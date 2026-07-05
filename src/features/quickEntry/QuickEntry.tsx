@@ -63,7 +63,9 @@ export function QuickEntry({
     initial?.toAccountId ?? accounts[1]?.id ?? accounts[0]?.id ?? "",
   );
   const [categoryId, setCategoryId] = useState<string | null>(
-    initial ? initial.categoryId : (categories[0]?.id ?? null),
+    initial
+      ? initial.categoryId
+      : (categories.find((c) => c.type === "expense" && !c.archived)?.id ?? null),
   );
   const [title, setTitle] = useState(initial?.title ?? "");
   const [date, setDate] = useState<Date>(() => initial?.date ?? new Date());
@@ -161,7 +163,14 @@ export function QuickEntry({
             <button
               key={ty}
               type="button"
-              onClick={() => setType(ty)}
+              onClick={() => {
+                setType(ty);
+                if (ty !== "transfer") {
+                  setCategoryId(
+                    categories.find((c) => c.type === ty && !c.archived)?.id ?? null,
+                  );
+                }
+              }}
               className={
                 "rounded-lg py-2 font-medium transition-colors " +
                 (type === ty ? "bg-slate-100 text-slate-900" : "text-slate-300")
@@ -265,7 +274,7 @@ export function QuickEntry({
             </p>
             <div className="grid grid-cols-3 gap-2">
               {categories
-                .filter((c) => !c.archived)
+                .filter((c) => !c.archived && c.type === type)
                 .map((c) => (
                   <button
                     key={c.id}
