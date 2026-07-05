@@ -83,12 +83,15 @@ function fromSnapshot(snap: QueryDocumentSnapshot<DocumentData>): Transaction {
   };
 }
 
-/** Map docs → Transactions, drop soft-deleted, newest first. */
+/** Map docs → Transactions, drop soft-deleted, newest first (date, then entry time). */
 function sortActive(docs: QueryDocumentSnapshot<DocumentData>[]): Transaction[] {
   return docs
     .map(fromSnapshot)
     .filter((t) => t.deletedAt === null)
-    .sort((a, b) => b.date.getTime() - a.date.getTime());
+    .sort(
+      (a, b) =>
+        b.date.getTime() - a.date.getTime() || b.createdAt.getTime() - a.createdAt.getTime(),
+    );
 }
 
 export const transactionRepo = {

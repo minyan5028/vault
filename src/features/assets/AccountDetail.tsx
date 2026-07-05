@@ -81,7 +81,9 @@ export function AccountDetail({
     if (allTxns === null) return map;
     let running = account.openingBalance;
     for (const tx of allTxns) if (tx.yearMonth < month) running += effectOn(tx, account.id);
-    const asc = [...mine].sort((a, b) => a.date.getTime() - b.date.getTime());
+    const asc = [...mine].sort(
+      (a, b) => a.date.getTime() - b.date.getTime() || a.createdAt.getTime() - b.createdAt.getTime(),
+    );
     for (const tx of asc) {
       running += effectOn(tx, account.id);
       map.set(tx.id, running);
