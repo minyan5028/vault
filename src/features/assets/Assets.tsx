@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { formatMoney, toMinor, toMajor } from "../../lib/money";
+import { formatMoney } from "../../lib/money";
 import { transactionRepo } from "../../data/transactionRepo";
-import { accountRepo } from "../../data/catalogRepo";
 import type { Account, Transaction } from "../../domain/types";
 
 const BASE_CURRENCY = "TWD";
@@ -57,69 +56,19 @@ export function Assets({ ledgerId, accounts }: { ledgerId: string; accounts: Acc
 
         <ul className="mt-2 divide-y divide-slate-800">
           {rows.map((r) => (
-            <AccountRow
-              key={r.account.id}
-              ledgerId={ledgerId}
-              account={r.account}
-              balance={r.balance}
-              loading={loading}
-              locale={i18n.language}
-            />
+            <li key={r.account.id} className="flex items-center justify-between py-3">
+              <span
+                className={"text-sm " + (r.account.archived ? "text-slate-500" : "text-slate-200")}
+              >
+                {r.account.name}
+              </span>
+              <span className="text-sm tabular-nums text-slate-100">
+                {loading ? "…" : formatMoney(r.balance, BASE_CURRENCY, i18n.language)}
+              </span>
+            </li>
           ))}
         </ul>
       </div>
     </main>
-  );
-}
-
-function AccountRow({
-  ledgerId,
-  account,
-  balance,
-  loading,
-  locale,
-}: {
-  ledgerId: string;
-  account: Account;
-  balance: number;
-  loading: boolean;
-  locale: string;
-}) {
-  const { t } = useTranslation();
-  const [openingText, setOpeningText] = useState(String(toMajor(account.openingBalance)));
-
-  function commit() {
-    let minor: number;
-    try {
-      minor = toMinor(openingText.trim() || "0");
-    } catch {
-      return;
-    }
-    if (minor !== account.openingBalance) {
-      accountRepo.update(ledgerId, account.id, { openingBalance: minor });
-    }
-  }
-
-  return (
-    <li className="py-2">
-      <div className="flex items-center justify-between">
-        <span className={"text-sm " + (account.archived ? "text-slate-500" : "text-slate-200")}>
-          {account.name}
-        </span>
-        <span className="text-sm tabular-nums text-slate-100">
-          {loading ? "…" : formatMoney(balance, BASE_CURRENCY, locale)}
-        </span>
-      </div>
-      <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
-        <label>{t("openingBalance")}</label>
-        <input
-          inputMode="decimal"
-          value={openingText}
-          onChange={(e) => setOpeningText(e.target.value.replace(/[^0-9.-]/g, ""))}
-          onBlur={commit}
-          className="w-28 rounded bg-slate-800 px-2 py-1 text-right text-slate-300 outline-none [color-scheme:dark]"
-        />
-      </div>
-    </li>
   );
 }

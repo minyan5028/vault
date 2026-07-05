@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toMinor, toMajor } from "../../lib/money";
 import type { Account, Category } from "../../domain/types";
 import { accountRepo, categoryRepo } from "../../data/catalogRepo";
 
@@ -97,24 +98,48 @@ export function Manage({
 function AccountRow({ ledgerId, account }: { ledgerId: string; account: Account }) {
   const { t } = useTranslation();
   const [name, setName] = useState(account.name);
+  const [opening, setOpening] = useState(String(toMajor(account.openingBalance)));
   const dim = account.archived ? "opacity-40" : "";
 
+  function commitOpening() {
+    let minor: number;
+    try {
+      minor = toMinor(opening.trim() || "0");
+    } catch {
+      return;
+    }
+    if (minor !== account.openingBalance)
+      accountRepo.update(ledgerId, account.id, { openingBalance: minor });
+  }
+
   return (
-    <li className="flex items-center gap-2">
-      <input
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        onBlur={() => {
-          const v = name.trim();
-          if (v && v !== account.name) accountRepo.update(ledgerId, account.id, { name: v });
-        }}
-        className={"flex-1 rounded-lg bg-slate-800 px-3 py-2 text-sm outline-none " + dim}
-      />
-      <ArchiveButton
-        archived={account.archived}
-        label={t(account.archived ? "unarchive" : "archive")}
-        onClick={() => accountRepo.update(ledgerId, account.id, { archived: !account.archived })}
-      />
+    <li className="space-y-1">
+      <div className="flex items-center gap-2">
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onBlur={() => {
+            const v = name.trim();
+            if (v && v !== account.name) accountRepo.update(ledgerId, account.id, { name: v });
+          }}
+          className={"flex-1 rounded-lg bg-slate-800 px-3 py-2 text-sm outline-none " + dim}
+        />
+        <ArchiveButton
+          archived={account.archived}
+          label={t(account.archived ? "unarchive" : "archive")}
+          onClick={() => accountRepo.update(ledgerId, account.id, { archived: !account.archived })}
+        />
+      </div>
+      <div className="flex items-center gap-2 pl-1 text-xs text-slate-500">
+        <label>{t("openingBalance")}</label>
+        <input
+          inputMode="decimal"
+          value={opening}
+          onChange={(e) => setOpening(e.target.value.replace(/[^0-9.-]/g, ""))}
+          onBlur={commitOpening}
+          className="w-32 rounded bg-slate-800 px-2 py-1 text-right text-slate-300 outline-none [color-scheme:dark]"
+        />
+      </div>
     </li>
   );
 }
