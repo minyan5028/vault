@@ -8,7 +8,7 @@ import { transactionRepo } from "./data/transactionRepo";
 import { useLedgerData } from "./data/useLedgerData";
 import { Timeline } from "./features/timeline/Timeline";
 import { QuickEntry } from "./features/quickEntry/QuickEntry";
-import { Manage } from "./features/manage/Manage";
+import { Settings } from "./features/settings/Settings";
 import { Stats } from "./features/stats/Stats";
 import { SignIn } from "./features/auth/SignIn";
 
@@ -27,7 +27,7 @@ function AuthedApp({ user }: { user: User }) {
   const { t } = useTranslation();
   const [ledgerId, setLedgerId] = useState<string | null>(null);
   const [editor, setEditor] = useState<Editor>(null);
-  const [manageOpen, setManageOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [statsOpen, setStatsOpen] = useState(false);
   const [undoId, setUndoId] = useState<string | null>(null);
   const { accounts, categories } = useLedgerData(ledgerId ?? "");
@@ -62,16 +62,16 @@ function AuthedApp({ user }: { user: User }) {
         categories={categories}
         onEdit={(tx) => setEditor({ tx })}
         onDelete={(tx) => deleteTx(tx.id)}
-        onManage={() => setManageOpen(true)}
+        onSettings={() => setSettingsOpen(true)}
         onStats={() => setStatsOpen(true)}
       />
 
-      {manageOpen && (
-        <Manage
+      {settingsOpen && (
+        <Settings
           ledgerId={ledgerId}
           accounts={accounts}
           categories={categories}
-          onClose={() => setManageOpen(false)}
+          onClose={() => setSettingsOpen(false)}
         />
       )}
 
@@ -83,7 +83,7 @@ function AuthedApp({ user }: { user: User }) {
         />
       )}
 
-      {!editor && !manageOpen && !statsOpen && (
+      {!editor && !settingsOpen && !statsOpen && (
         <button
           type="button"
           onClick={() => setEditor({})}

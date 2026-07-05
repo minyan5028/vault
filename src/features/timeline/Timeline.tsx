@@ -10,8 +10,6 @@ import {
 } from "../../lib/date";
 import { useMonthTransactions } from "../../data/useMonthTransactions";
 import type { Account, Category, Transaction } from "../../domain/types";
-import { LanguageToggle } from "../../components/LanguageToggle";
-import { signOutUser } from "../../auth/useAuth";
 
 const BASE_CURRENCY = "TWD";
 
@@ -25,7 +23,7 @@ export function Timeline({
   categories,
   onEdit,
   onDelete,
-  onManage,
+  onSettings,
   onStats,
 }: {
   ledgerId: string;
@@ -33,7 +31,7 @@ export function Timeline({
   categories: Category[];
   onEdit: (tx: Transaction) => void;
   onDelete: (tx: Transaction) => void;
-  onManage: () => void;
+  onSettings: () => void;
   onStats: () => void;
 }) {
   const { t, i18n } = useTranslation();
@@ -51,27 +49,19 @@ export function Timeline({
         <header className="flex items-center justify-between py-3">
           <span className="text-lg font-semibold tracking-tight">{t("appName")}</span>
           <div className="flex items-center gap-2">
-            <LanguageToggle />
             <button
               type="button"
               onClick={onStats}
-              className="rounded-full bg-slate-800 px-2 py-1 text-xs text-slate-400"
+              className="rounded-full bg-slate-800 px-3 py-1 text-xs text-slate-300"
             >
               {t("stats")}
             </button>
             <button
               type="button"
-              onClick={onManage}
-              className="rounded-full bg-slate-800 px-2 py-1 text-xs text-slate-400"
+              onClick={onSettings}
+              className="rounded-full bg-slate-800 px-3 py-1 text-xs text-slate-300"
             >
-              {t("manage")}
-            </button>
-            <button
-              type="button"
-              onClick={() => void signOutUser()}
-              className="rounded-full bg-slate-800 px-2 py-1 text-xs text-slate-400"
-            >
-              {t("signOut")}
+              {t("settings")}
             </button>
           </div>
         </header>
