@@ -7,7 +7,15 @@ import type { Account, Transaction } from "../../domain/types";
 const BASE_CURRENCY = "TWD";
 
 /** Net worth: each account's balance = opening balance + net recorded flow. */
-export function Assets({ ledgerId, accounts }: { ledgerId: string; accounts: Account[] }) {
+export function Assets({
+  ledgerId,
+  accounts,
+  onOpenAccount,
+}: {
+  ledgerId: string;
+  accounts: Account[];
+  onOpenAccount: (account: Account, balance: number) => void;
+}) {
   const { t, i18n } = useTranslation();
   const [txns, setTxns] = useState<Transaction[] | null>(null);
 
@@ -56,15 +64,21 @@ export function Assets({ ledgerId, accounts }: { ledgerId: string; accounts: Acc
 
         <ul className="mt-2 divide-y divide-slate-800">
           {rows.map((r) => (
-            <li key={r.account.id} className="flex items-center justify-between py-3">
-              <span
-                className={"text-sm " + (r.account.archived ? "text-slate-500" : "text-slate-200")}
+            <li key={r.account.id}>
+              <button
+                type="button"
+                onClick={() => onOpenAccount(r.account, r.balance)}
+                className="flex w-full items-center justify-between py-3 text-left active:bg-slate-800/50"
               >
-                {r.account.name}
-              </span>
-              <span className="text-sm tabular-nums text-slate-100">
-                {loading ? "…" : formatMoney(r.balance, BASE_CURRENCY, i18n.language)}
-              </span>
+                <span
+                  className={"text-sm " + (r.account.archived ? "text-slate-500" : "text-slate-200")}
+                >
+                  {r.account.name}
+                </span>
+                <span className="text-sm tabular-nums text-slate-100">
+                  {loading ? "…" : formatMoney(r.balance, BASE_CURRENCY, i18n.language)}
+                </span>
+              </button>
             </li>
           ))}
         </ul>

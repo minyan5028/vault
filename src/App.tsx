@@ -13,7 +13,9 @@ import { QuickEntry } from "./features/quickEntry/QuickEntry";
 import { Settings } from "./features/settings/Settings";
 import { Stats } from "./features/stats/Stats";
 import { Assets } from "./features/assets/Assets";
+import { AccountDetail } from "./features/assets/AccountDetail";
 import { SignIn } from "./features/auth/SignIn";
+import type { Account } from "./domain/types";
 
 /** Auth gate: splash while resolving, sign-in when signed out, else the app. */
 export function App() {
@@ -31,6 +33,7 @@ function AuthedApp({ user }: { user: User }) {
   const [ledgerId, setLedgerId] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("timeline");
   const [editor, setEditor] = useState<Editor>(null);
+  const [accountView, setAccountView] = useState<{ account: Account; balance: number } | null>(null);
   const [undoId, setUndoId] = useState<string | null>(null);
   const { accounts, categories } = useLedgerData(ledgerId ?? "");
 
@@ -71,7 +74,13 @@ function AuthedApp({ user }: { user: User }) {
         />
       )}
       {tab === "stats" && <Stats ledgerId={ledgerId} categories={categories} />}
-      {tab === "assets" && <Assets ledgerId={ledgerId} accounts={accounts} />}
+      {tab === "assets" && (
+        <Assets
+          ledgerId={ledgerId}
+          accounts={accounts}
+          onOpenAccount={(account, balance) => setAccountView({ account, balance })}
+        />
+      )}
       {tab === "settings" && (
         <Settings ledgerId={ledgerId} accounts={accounts} categories={categories} />
       )}
@@ -87,6 +96,19 @@ function AuthedApp({ user }: { user: User }) {
         >
           +
         </button>
+      )}
+
+      {accountView && (
+        <AccountDetail
+          ledgerId={ledgerId}
+          account={accountView.account}
+          balance={accountView.balance}
+          accounts={accounts}
+          categories={categories}
+          onEdit={(tx) => setEditor({ tx })}
+          onDelete={(tx) => deleteTx(tx.id)}
+          onBack={() => setAccountView(null)}
+        />
       )}
 
       {editor && (

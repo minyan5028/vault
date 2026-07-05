@@ -170,7 +170,7 @@ function SummaryCell({
 
 const SWIPE_DELETE_THRESHOLD = 80;
 
-function EntryRow({
+export function EntryRow({
   tx,
   locale,
   accounts,
@@ -272,7 +272,7 @@ function totals(items: Transaction[]): { income: number; expense: number; net: n
 }
 
 /** Group transactions by local day, preserving newest-first order. */
-function groupByDay(txns: Transaction[]): [string, Transaction[]][] {
+export function groupByDay(txns: Transaction[]): [string, Transaction[]][] {
   const map = new Map<string, Transaction[]>();
   for (const e of txns) {
     const key = toDateInputValue(e.date);
@@ -283,7 +283,7 @@ function groupByDay(txns: Transaction[]): [string, Transaction[]][] {
   return [...map.entries()];
 }
 
-function dayLabel(key: string, locale: string, t: (k: "today" | "yesterday") => string): string {
+export function dayLabel(key: string, locale: string, t: (k: "today" | "yesterday") => string): string {
   const today = toDateInputValue(new Date());
   const yesterday = toDateInputValue(new Date(Date.now() - 86_400_000));
   if (key === today) return t("today");
