@@ -29,6 +29,7 @@ function toAccount(s: QueryDocumentSnapshot<DocumentData>): Account {
     name: d.name,
     type: d.type ?? "other",
     currency: d.currency ?? "TWD",
+    openingBalance: d.openingBalance ?? 0,
     archived: !!d.archived,
     sortOrder: d.sortOrder ?? 0,
   };

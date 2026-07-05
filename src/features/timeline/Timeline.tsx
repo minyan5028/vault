@@ -25,16 +25,12 @@ export function Timeline({
   categories,
   onEdit,
   onDelete,
-  onSettings,
-  onStats,
 }: {
   ledgerId: string;
   accounts: Account[];
   categories: Category[];
   onEdit: (tx: Transaction) => void;
   onDelete: (tx: Transaction) => void;
-  onSettings: () => void;
-  onStats: () => void;
 }) {
   const { t, i18n } = useTranslation();
   const locale = i18n.language;
@@ -53,24 +49,8 @@ export function Timeline({
     <main className="min-h-dvh bg-slate-900 text-slate-100">
       <div className="mx-auto max-w-md px-4 pb-28">
         {/* Header */}
-        <header className="flex items-center justify-between py-3">
+        <header className="py-3">
           <span className="text-lg font-semibold tracking-tight">{t("appName")}</span>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onStats}
-              className="rounded-full bg-slate-800 px-3 py-1 text-xs text-slate-300"
-            >
-              {t("stats")}
-            </button>
-            <button
-              type="button"
-              onClick={onSettings}
-              className="rounded-full bg-slate-800 px-3 py-1 text-xs text-slate-300"
-            >
-              {t("settings")}
-            </button>
-          </div>
         </header>
 
         {/* Month selector */}

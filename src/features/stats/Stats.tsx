@@ -8,15 +8,7 @@ import type { Category } from "../../domain/types";
 const BASE_CURRENCY = "TWD";
 
 /** Monthly expense breakdown by category (see roadmap Phase 3). */
-export function Stats({
-  ledgerId,
-  categories,
-  onClose,
-}: {
-  ledgerId: string;
-  categories: Category[];
-  onClose: () => void;
-}) {
+export function Stats({ ledgerId, categories }: { ledgerId: string; categories: Category[] }) {
   const { t, i18n } = useTranslation();
   const locale = i18n.language;
   const [month, setMonth] = useState<string>(() => yearMonthOf(new Date()));
@@ -38,19 +30,10 @@ export function Stats({
   }, [txns]);
 
   return (
-    <div className="fixed inset-0 z-20 overflow-y-auto bg-slate-900 text-slate-100">
-      <div className="mx-auto max-w-md px-4 pb-10 pt-4">
-        <header className="mb-3 flex items-center justify-between">
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label={t("close")}
-            className="rounded-full bg-slate-800 px-3 py-1 text-slate-300"
-          >
-            ✕
-          </button>
-          <span className="text-sm font-semibold text-slate-300">{t("stats")}</span>
-          <span className="w-8" />
+    <main className="min-h-dvh bg-slate-900 text-slate-100">
+      <div className="mx-auto max-w-md px-4 pb-28 pt-4">
+        <header className="py-1">
+          <span className="text-lg font-semibold tracking-tight">{t("stats")}</span>
         </header>
 
         {/* Month selector */}
@@ -111,6 +94,6 @@ export function Stats({
           </ul>
         )}
       </div>
-    </div>
+    </main>
   );
 }

@@ -16,12 +16,10 @@ export function Settings({
   ledgerId,
   accounts,
   categories,
-  onClose,
 }: {
   ledgerId: string;
   accounts: Account[];
   categories: Category[];
-  onClose: () => void;
 }) {
   const { t, i18n } = useTranslation();
   const [sub, setSub] = useState<Sub>(null);
@@ -53,19 +51,10 @@ export function Settings({
   const nextLang = i18n.resolvedLanguage === "zh-TW" ? "en" : "zh-TW";
 
   return (
-    <div className="fixed inset-0 z-20 overflow-y-auto bg-slate-900 text-slate-100">
-      <div className="mx-auto max-w-md px-4 pb-10 pt-4">
-        <header className="mb-4 flex items-center justify-between">
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label={t("close")}
-            className="rounded-full bg-slate-800 px-3 py-1 text-slate-300"
-          >
-            ✕
-          </button>
-          <span className="text-sm font-semibold text-slate-300">{t("settings")}</span>
-          <span className="w-8" />
+    <main className="min-h-dvh bg-slate-900 text-slate-100">
+      <div className="mx-auto max-w-md px-4 pb-28 pt-4">
+        <header className="mb-4 py-1">
+          <span className="text-lg font-semibold tracking-tight">{t("settings")}</span>
         </header>
 
         <ul className="divide-y divide-slate-800 overflow-hidden rounded-xl bg-slate-800/40">
@@ -80,7 +69,7 @@ export function Settings({
           <Row label={t("signOut")} onClick={() => void signOutUser()} danger />
         </ul>
       </div>
-    </div>
+    </main>
   );
 }
 

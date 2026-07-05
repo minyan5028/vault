@@ -7,10 +7,12 @@ import { provisionPersonalLedger } from "./data/provisionLedger";
 import { transactionRepo } from "./data/transactionRepo";
 import { materializeRecurring } from "./data/materializeRecurring";
 import { useLedgerData } from "./data/useLedgerData";
+import { BottomNav, type Tab } from "./components/BottomNav";
 import { Timeline } from "./features/timeline/Timeline";
 import { QuickEntry } from "./features/quickEntry/QuickEntry";
 import { Settings } from "./features/settings/Settings";
 import { Stats } from "./features/stats/Stats";
+import { Assets } from "./features/assets/Assets";
 import { SignIn } from "./features/auth/SignIn";
 
 /** Auth gate: splash while resolving, sign-in when signed out, else the app. */
@@ -27,9 +29,8 @@ type Editor = null | { tx?: Transaction };
 function AuthedApp({ user }: { user: User }) {
   const { t } = useTranslation();
   const [ledgerId, setLedgerId] = useState<string | null>(null);
+  const [tab, setTab] = useState<Tab>("timeline");
   const [editor, setEditor] = useState<Editor>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [statsOpen, setStatsOpen] = useState(false);
   const [undoId, setUndoId] = useState<string | null>(null);
   const { accounts, categories } = useLedgerData(ledgerId ?? "");
 
@@ -38,7 +39,6 @@ function AuthedApp({ user }: { user: User }) {
     provisionPersonalLedger(user).then((id) => {
       if (!active) return;
       setLedgerId(id);
-      // Catch up any due recurring transactions on open.
       void materializeRecurring(id, user.uid).catch(console.error);
     });
     return () => {
@@ -46,7 +46,6 @@ function AuthedApp({ user }: { user: User }) {
     };
   }, [user]);
 
-  // Auto-dismiss the undo snackbar.
   useEffect(() => {
     if (!undoId) return;
     const timer = setTimeout(() => setUndoId(null), 5000);
@@ -62,39 +61,29 @@ function AuthedApp({ user }: { user: User }) {
 
   return (
     <>
-      <Timeline
-        ledgerId={ledgerId}
-        accounts={accounts}
-        categories={categories}
-        onEdit={(tx) => setEditor({ tx })}
-        onDelete={(tx) => deleteTx(tx.id)}
-        onSettings={() => setSettingsOpen(true)}
-        onStats={() => setStatsOpen(true)}
-      />
-
-      {settingsOpen && (
-        <Settings
+      {tab === "timeline" && (
+        <Timeline
           ledgerId={ledgerId}
           accounts={accounts}
           categories={categories}
-          onClose={() => setSettingsOpen(false)}
+          onEdit={(tx) => setEditor({ tx })}
+          onDelete={(tx) => deleteTx(tx.id)}
         />
       )}
-
-      {statsOpen && (
-        <Stats
-          ledgerId={ledgerId}
-          categories={categories}
-          onClose={() => setStatsOpen(false)}
-        />
+      {tab === "stats" && <Stats ledgerId={ledgerId} categories={categories} />}
+      {tab === "assets" && <Assets ledgerId={ledgerId} accounts={accounts} />}
+      {tab === "settings" && (
+        <Settings ledgerId={ledgerId} accounts={accounts} categories={categories} />
       )}
 
-      {!editor && !settingsOpen && !statsOpen && (
+      <BottomNav active={tab} onChange={setTab} />
+
+      {tab === "timeline" && !editor && (
         <button
           type="button"
           onClick={() => setEditor({})}
           aria-label={t("newEntry")}
-          className="fixed bottom-6 right-6 z-10 flex h-14 w-14 items-center justify-center rounded-full bg-rose-500 text-3xl leading-none text-white shadow-lg active:bg-rose-400"
+          className="fixed bottom-20 right-6 z-10 flex h-14 w-14 items-center justify-center rounded-full bg-rose-500 text-3xl leading-none text-white shadow-lg active:bg-rose-400"
         >
           +
         </button>
@@ -117,7 +106,7 @@ function AuthedApp({ user }: { user: User }) {
       )}
 
       {undoId && (
-        <div className="fixed bottom-6 left-1/2 z-30 flex -translate-x-1/2 items-center gap-4 rounded-full bg-slate-100 px-4 py-2 text-sm text-slate-900 shadow-lg">
+        <div className="fixed bottom-20 left-1/2 z-30 flex -translate-x-1/2 items-center gap-4 rounded-full bg-slate-100 px-4 py-2 text-sm text-slate-900 shadow-lg">
           <span>{t("deleted")}</span>
           <button
             type="button"

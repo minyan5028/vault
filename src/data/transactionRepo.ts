@@ -123,6 +123,11 @@ export const transactionRepo = {
     return sortActive((await getDocs(q)).docs);
   },
 
+  /** All active transactions (for deriving balances). */
+  async fetchAll(ledgerId: string): Promise<Transaction[]> {
+    return sortActive((await getDocs(transactionsCol(ledgerId))).docs);
+  },
+
   /**
    * Distinct historical titles starting with `prefix`, for entry autocomplete
    * (recording the same shop again). Prefix match via a title range query

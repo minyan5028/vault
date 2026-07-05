@@ -20,6 +20,8 @@ export interface Account {
   /** Free-form label, not a fixed cash/bank/credit enum. */
   type: string;
   currency: string;
+  /** Balance before recorded history began (minor units). Balance = this + net flow. */
+  openingBalance: number;
   archived: boolean;
   sortOrder: number;
 }
