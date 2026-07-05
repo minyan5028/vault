@@ -19,6 +19,23 @@ export function fromDateInputValue(value: string): Date {
   return new Date(y, m - 1, d);
 }
 
+/** Add whole days to a date (returns a new Date). */
+export function addDays(date: Date, n: number): Date {
+  const d = new Date(date);
+  d.setDate(d.getDate() + n);
+  return d;
+}
+
+/** Add whole months, clamping the day to the target month's length (Jan 31 + 1m → Feb 28/29). */
+export function addMonthsClamped(date: Date, n: number): Date {
+  const day = date.getDate();
+  const d = new Date(date.getFullYear(), date.getMonth() + n, 1);
+  const daysInMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  d.setDate(Math.min(day, daysInMonth));
+  d.setHours(date.getHours(), date.getMinutes(), 0, 0);
+  return d;
+}
+
 /** Shift a `yyyy-mm` key by whole months. */
 export function shiftMonth(yearMonth: string, delta: number): string {
   const [y, m] = yearMonth.split("-").map(Number);

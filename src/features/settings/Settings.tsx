@@ -3,8 +3,9 @@ import { useTranslation } from "react-i18next";
 import type { Account, Category } from "../../domain/types";
 import { signOutUser } from "../../auth/useAuth";
 import { Manage } from "../manage/Manage";
+import { Recurring } from "../recurring/Recurring";
 
-type Sub = "catalog" | null;
+type Sub = "catalog" | "recurring" | null;
 
 /**
  * Settings hub — the home for configuration (accounts/categories today;
@@ -34,6 +35,16 @@ export function Settings({
       />
     );
   }
+  if (sub === "recurring") {
+    return (
+      <Recurring
+        ledgerId={ledgerId}
+        accounts={accounts}
+        categories={categories}
+        onClose={() => setSub(null)}
+      />
+    );
+  }
 
   const nextLang = i18n.resolvedLanguage === "zh-TW" ? "en" : "zh-TW";
 
@@ -55,6 +66,7 @@ export function Settings({
 
         <ul className="divide-y divide-slate-800 overflow-hidden rounded-xl bg-slate-800/40">
           <Row label={t("catalog")} onClick={() => setSub("catalog")} chevron />
+          <Row label={t("recurring")} onClick={() => setSub("recurring")} chevron />
           <Row
             label={t("language")}
             value={i18n.resolvedLanguage === "zh-TW" ? "中文" : "English"}

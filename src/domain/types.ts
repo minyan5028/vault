@@ -39,6 +39,29 @@ export interface Category {
 /** Financial Event kind. Starts here; grows later (dividend, asset_buy, …). */
 export type EventType = "expense" | "income" | "transfer";
 
+export type RecurringFrequency = "weekly" | "monthly";
+
+/** A template that generates transactions on a schedule (see roadmap). */
+export interface RecurringRule {
+  id: string;
+  type: EventType;
+  amount: number;
+  currency: string;
+  baseAmount: number;
+  baseCurrency: string;
+  fxRate: number;
+  categoryId: string | null;
+  accountId: string;
+  toAccountId: string | null;
+  title: string;
+  note: string | null;
+  frequency: RecurringFrequency;
+  interval: number; // every N weeks/months
+  startDate: Date;
+  nextDate: Date; // next occurrence still to generate
+  active: boolean;
+}
+
 /** A Financial Event. All money fields are integer minor units (×100). */
 export interface Transaction {
   id: string;

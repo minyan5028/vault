@@ -5,6 +5,7 @@ import type { Transaction } from "./domain/types";
 import { useAuth } from "./auth/useAuth";
 import { provisionPersonalLedger } from "./data/provisionLedger";
 import { transactionRepo } from "./data/transactionRepo";
+import { materializeRecurring } from "./data/materializeRecurring";
 import { useLedgerData } from "./data/useLedgerData";
 import { Timeline } from "./features/timeline/Timeline";
 import { QuickEntry } from "./features/quickEntry/QuickEntry";
@@ -34,7 +35,12 @@ function AuthedApp({ user }: { user: User }) {
 
   useEffect(() => {
     let active = true;
-    provisionPersonalLedger(user).then((id) => active && setLedgerId(id));
+    provisionPersonalLedger(user).then((id) => {
+      if (!active) return;
+      setLedgerId(id);
+      // Catch up any due recurring transactions on open.
+      void materializeRecurring(id, user.uid).catch(console.error);
+    });
     return () => {
       active = false;
     };
