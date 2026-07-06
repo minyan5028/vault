@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { User } from "firebase/auth";
-import type { Transaction } from "./domain/types";
+import type { Account, Ledger, Transaction } from "./domain/types";
 import { useAuth } from "./auth/useAuth";
 import { provisionPersonalLedger } from "./data/provisionLedger";
 import { transactionRepo } from "./data/transactionRepo";
@@ -17,7 +17,6 @@ import { Stats } from "./features/stats/Stats";
 import { Assets } from "./features/assets/Assets";
 import { AccountDetail } from "./features/assets/AccountDetail";
 import { SignIn } from "./features/auth/SignIn";
-import type { Account } from "./domain/types";
 
 /** Auth gate: splash while resolving, sign-in when signed out, else the app. */
 export function App() {
@@ -42,8 +41,16 @@ function AuthedApp({ user }: { user: User }) {
   const [editor, setEditor] = useState<Editor>(null);
   const [accountView, setAccountView] = useState<{ account: Account; balance: number } | null>(null);
   const [undoId, setUndoId] = useState<string | null>(null);
-  const ledgers = useUserLedgers(user.uid);
+  // Optimistic ledgers shown immediately after creation, until the live query
+  // catches up (so a new ledger appears in the switcher without a refresh).
+  const [pending, setPending] = useState<Ledger[]>([]);
+  const subscribed = useUserLedgers(user.uid);
+  const ledgers = [...subscribed, ...pending.filter((p) => !subscribed.some((l) => l.id === p.id))];
   const { accounts, categories } = useLedgerData(ready ? ledgerId : "");
+
+  useEffect(() => {
+    setPending((p) => p.filter((pl) => !subscribed.some((l) => l.id === pl.id)));
+  }, [subscribed]);
 
   // Ensure the personal ledger exists, then reveal the app.
   useEffect(() => {
@@ -86,6 +93,19 @@ function AuthedApp({ user }: { user: User }) {
 
   const createLedger = (name: string) => {
     void ledgerRepo.create(user.uid, name).then((id) => {
+      setPending((p) => [
+        ...p,
+        {
+          id,
+          name,
+          baseCurrency: "TWD",
+          members: { [user.uid]: "owner" },
+          memberIds: [user.uid],
+          invitedEmails: [],
+          createdBy: user.uid,
+          createdAt: new Date(),
+        },
+      ]);
       setTab("timeline");
       setLedgerId(id);
     });
