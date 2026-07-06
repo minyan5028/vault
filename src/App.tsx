@@ -8,6 +8,7 @@ import { transactionRepo } from "./data/transactionRepo";
 import { materializeRecurring } from "./data/materializeRecurring";
 import { useLedgerData } from "./data/useLedgerData";
 import { useUserLedgers } from "./data/useUserLedgers";
+import { useMyInvites } from "./data/useMyInvites";
 import { ledgerRepo } from "./data/ledgerRepo";
 import { BottomNav, type Tab } from "./components/BottomNav";
 import { Timeline } from "./features/timeline/Timeline";
@@ -45,7 +46,9 @@ function AuthedApp({ user }: { user: User }) {
   // catches up (so a new ledger appears in the switcher without a refresh).
   const [pending, setPending] = useState<Ledger[]>([]);
   const subscribed = useUserLedgers(user.uid);
+  const invites = useMyInvites(user.email);
   const ledgers = [...subscribed, ...pending.filter((p) => !subscribed.some((l) => l.id === p.id))];
+  const activeLedger = ledgers.find((l) => l.id === ledgerId);
   const { accounts, categories } = useLedgerData(ready ? ledgerId : "");
 
   useEffect(() => {
@@ -111,6 +114,14 @@ function AuthedApp({ user }: { user: User }) {
     });
   };
 
+  const acceptInvite = (id: string) => {
+    if (!user.email) return;
+    void ledgerRepo.accept(id, user.uid, user.email).then(() => {
+      setTab("timeline");
+      setLedgerId(id);
+    });
+  };
+
   return (
     <>
       {tab === "timeline" && (
@@ -119,8 +130,10 @@ function AuthedApp({ user }: { user: User }) {
           accounts={accounts}
           categories={categories}
           ledgers={ledgers}
+          invites={invites}
           onSelectLedger={setLedgerId}
           onCreateLedger={createLedger}
+          onAcceptInvite={acceptInvite}
           onEdit={(tx) => setEditor({ tx })}
           onDelete={(tx) => deleteTx(tx.id)}
         />
@@ -134,7 +147,14 @@ function AuthedApp({ user }: { user: User }) {
         />
       )}
       {tab === "settings" && (
-        <Settings ledgerId={ledgerId} accounts={accounts} categories={categories} />
+        <Settings
+          ledgerId={ledgerId}
+          accounts={accounts}
+          categories={categories}
+          ledger={activeLedger}
+          uid={user.uid}
+          onLedgerDeleted={() => setLedgerId(user.uid)}
+        />
       )}
 
       <BottomNav active={tab} onChange={setTab} />

@@ -1,25 +1,32 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { Account, Category } from "../../domain/types";
+import type { Account, Category, Ledger } from "../../domain/types";
 import { signOutUser } from "../../auth/useAuth";
 import { Manage } from "../manage/Manage";
 import { Recurring } from "../recurring/Recurring";
 import { Backup } from "../backup/Backup";
+import { LedgerSettings } from "./LedgerSettings";
 
-type Sub = "catalog" | "recurring" | "backup" | null;
+type Sub = "catalog" | "recurring" | "backup" | "ledger" | null;
 
 /**
- * Settings hub — the home for configuration (accounts/categories today;
- * recurring, backup, currency later). Keeps the Timeline header uncluttered.
+ * Settings hub — the home for configuration. Keeps the Timeline header
+ * uncluttered.
  */
 export function Settings({
   ledgerId,
   accounts,
   categories,
+  ledger,
+  uid,
+  onLedgerDeleted,
 }: {
   ledgerId: string;
   accounts: Account[];
   categories: Category[];
+  ledger?: Ledger;
+  uid: string;
+  onLedgerDeleted: () => void;
 }) {
   const { t, i18n } = useTranslation();
   const [sub, setSub] = useState<Sub>(null);
@@ -47,6 +54,19 @@ export function Settings({
   if (sub === "backup") {
     return <Backup ledgerId={ledgerId} onClose={() => setSub(null)} />;
   }
+  if (sub === "ledger" && ledger) {
+    return (
+      <LedgerSettings
+        ledger={ledger}
+        uid={uid}
+        onClose={() => setSub(null)}
+        onDeleted={() => {
+          setSub(null);
+          onLedgerDeleted();
+        }}
+      />
+    );
+  }
 
   const nextLang = i18n.resolvedLanguage === "zh-TW" ? "en" : "zh-TW";
 
@@ -59,6 +79,7 @@ export function Settings({
 
         <ul className="divide-y divide-slate-800 overflow-hidden rounded-xl bg-slate-800/40">
           <Row label={t("catalog")} onClick={() => setSub("catalog")} chevron />
+          {ledger && <Row label={t("sharing")} onClick={() => setSub("ledger")} chevron />}
           <Row label={t("recurring")} onClick={() => setSub("recurring")} chevron />
           <Row label={t("backup")} onClick={() => setSub("backup")} chevron />
           <Row

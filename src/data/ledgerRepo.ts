@@ -1,11 +1,18 @@
-/** Ledgers a user belongs to, and creating new ones (personal or shared). */
+/** Ledgers a user belongs to; creating, sharing (invite/accept), deleting. */
 import {
   addDoc,
+  arrayRemove,
+  arrayUnion,
   collection,
+  deleteDoc,
+  doc,
+  getDocs,
   onSnapshot,
   query,
   serverTimestamp,
+  updateDoc,
   where,
+  writeBatch,
   type DocumentData,
   type QueryDocumentSnapshot,
   type Unsubscribe,
@@ -15,6 +22,8 @@ import { seedLedgerCatalog } from "./seedCatalog";
 import type { Ledger } from "../domain/types";
 
 const ledgersCol = () => collection(db, "ledgers");
+const ledgerDoc = (id: string) => doc(db, "ledgers", id);
+const norm = (email: string) => email.trim().toLowerCase();
 
 function toLedger(s: QueryDocumentSnapshot<DocumentData>): Ledger {
   const d = s.data();
@@ -41,6 +50,16 @@ export const ledgerRepo = {
     );
   },
 
+  /** Live list of ledgers I've been invited to (by email) but not yet joined. */
+  subscribeInvites(email: string, cb: (ledgers: Ledger[]) => void): Unsubscribe {
+    const q = query(ledgersCol(), where("invitedEmails", "array-contains", norm(email)));
+    return onSnapshot(
+      q,
+      (s) => cb(s.docs.map(toLedger)),
+      (e) => console.error("invites", e),
+    );
+  },
+
   /** Create a new ledger owned by the user; returns its id. */
   async create(uid: string, name: string, baseCurrency = "TWD"): Promise<string> {
     const ref = await addDoc(ledgersCol(), {
@@ -54,5 +73,37 @@ export const ledgerRepo = {
     });
     await seedLedgerCatalog(ref.id);
     return ref.id;
+  },
+
+  /** Invite someone by email (adds to the ledger's pending invites). */
+  invite(ledgerId: string, email: string) {
+    return updateDoc(ledgerDoc(ledgerId), { invitedEmails: arrayUnion(norm(email)) });
+  },
+
+  /** Cancel a pending invite. */
+  cancelInvite(ledgerId: string, email: string) {
+    return updateDoc(ledgerDoc(ledgerId), { invitedEmails: arrayRemove(norm(email)) });
+  },
+
+  /** Accept an invite: join as a member and clear your pending email. */
+  accept(ledgerId: string, uid: string, email: string) {
+    return updateDoc(ledgerDoc(ledgerId), {
+      [`members.${uid}`]: "member",
+      memberIds: arrayUnion(uid),
+      invitedEmails: arrayRemove(norm(email)),
+    });
+  },
+
+  /** Delete a ledger and all its data (owner only). */
+  async remove(ledgerId: string): Promise<void> {
+    for (const name of ["accounts", "categories", "transactions", "recurring"]) {
+      const snap = await getDocs(collection(db, "ledgers", ledgerId, name));
+      for (let i = 0; i < snap.docs.length; i += 400) {
+        const batch = writeBatch(db);
+        for (const d of snap.docs.slice(i, i + 400)) batch.delete(d.ref);
+        await batch.commit();
+      }
+    }
+    await deleteDoc(ledgerDoc(ledgerId));
   },
 };

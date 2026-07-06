@@ -22,8 +22,10 @@ export function Timeline({
   accounts,
   categories,
   ledgers,
+  invites,
   onSelectLedger,
   onCreateLedger,
+  onAcceptInvite,
   onEdit,
   onDelete,
 }: {
@@ -31,8 +33,10 @@ export function Timeline({
   accounts: Account[];
   categories: Category[];
   ledgers: Ledger[];
+  invites: Ledger[];
   onSelectLedger: (id: string) => void;
   onCreateLedger: (name: string) => void;
+  onAcceptInvite: (id: string) => void;
   onEdit: (tx: Transaction) => void;
   onDelete: (tx: Transaction) => void;
 }) {
@@ -56,8 +60,10 @@ export function Timeline({
           <LedgerSwitcher
             ledgers={ledgers}
             activeId={ledgerId}
+            invites={invites}
             onSelect={onSelectLedger}
             onCreate={onCreateLedger}
+            onAccept={onAcceptInvite}
           />
         </header>
 

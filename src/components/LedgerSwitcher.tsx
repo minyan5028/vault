@@ -6,13 +6,17 @@ import type { Ledger } from "../domain/types";
 export function LedgerSwitcher({
   ledgers,
   activeId,
+  invites,
   onSelect,
   onCreate,
+  onAccept,
 }: {
   ledgers: Ledger[];
   activeId: string;
+  invites: Ledger[];
   onSelect: (id: string) => void;
   onCreate: (name: string) => void;
+  onAccept: (ledgerId: string) => void;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -41,6 +45,7 @@ export function LedgerSwitcher({
       >
         {active?.name ?? t("appName")}
         <span className="text-xs text-slate-500">▾</span>
+        {invites.length > 0 && <span className="h-2 w-2 rounded-full bg-rose-500" />}
       </button>
 
       {open && (
@@ -94,6 +99,29 @@ export function LedgerSwitcher({
               >
                 + {t("newLedger")}
               </button>
+            )}
+
+            {invites.length > 0 && (
+              <div className="border-t border-slate-700">
+                <p className="px-3 pb-1 pt-2 text-xs uppercase tracking-wide text-slate-500">
+                  {t("invitations")}
+                </p>
+                {invites.map((l) => (
+                  <div key={l.id} className="flex items-center justify-between px-3 py-2 text-sm">
+                    <span className="truncate text-slate-300">{l.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onAccept(l.id);
+                        close();
+                      }}
+                      className="shrink-0 rounded bg-emerald-500 px-2 py-1 text-xs font-medium text-slate-900"
+                    >
+                      {t("accept")}
+                    </button>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         </>
