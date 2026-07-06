@@ -10,6 +10,10 @@ export interface Ledger {
   name: string;
   baseCurrency: string;
   members: Record<string, LedgerRole>;
+  /** uids of members — a queryable array mirror of `members` keys. */
+  memberIds: string[];
+  /** lowercased emails invited but not yet joined (see sharing). */
+  invitedEmails: string[];
   createdBy: string;
   createdAt: Date;
 }

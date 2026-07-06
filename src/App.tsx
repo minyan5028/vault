@@ -7,6 +7,8 @@ import { provisionPersonalLedger } from "./data/provisionLedger";
 import { transactionRepo } from "./data/transactionRepo";
 import { materializeRecurring } from "./data/materializeRecurring";
 import { useLedgerData } from "./data/useLedgerData";
+import { useUserLedgers } from "./data/useUserLedgers";
+import { ledgerRepo } from "./data/ledgerRepo";
 import { BottomNav, type Tab } from "./components/BottomNav";
 import { Timeline } from "./features/timeline/Timeline";
 import { QuickEntry } from "./features/quickEntry/QuickEntry";
@@ -28,26 +30,41 @@ export function App() {
 /** null = closed · {} = new entry · { tx } = editing an existing one. */
 type Editor = null | { tx?: Transaction };
 
+const activeLedgerKey = (uid: string) => `vault.ledger.${uid}`;
+
 function AuthedApp({ user }: { user: User }) {
   const { t } = useTranslation();
-  const [ledgerId, setLedgerId] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
+  const [ledgerId, setLedgerId] = useState<string>(
+    () => localStorage.getItem(activeLedgerKey(user.uid)) ?? user.uid,
+  );
   const [tab, setTab] = useState<Tab>("timeline");
   const [editor, setEditor] = useState<Editor>(null);
   const [accountView, setAccountView] = useState<{ account: Account; balance: number } | null>(null);
   const [undoId, setUndoId] = useState<string | null>(null);
-  const { accounts, categories } = useLedgerData(ledgerId ?? "");
+  const ledgers = useUserLedgers(user.uid);
+  const { accounts, categories } = useLedgerData(ready ? ledgerId : "");
 
+  // Ensure the personal ledger exists, then reveal the app.
   useEffect(() => {
     let active = true;
-    provisionPersonalLedger(user).then((id) => {
-      if (!active) return;
-      setLedgerId(id);
-      void materializeRecurring(id, user.uid).catch(console.error);
-    });
+    provisionPersonalLedger(user).then(() => active && setReady(true));
     return () => {
       active = false;
     };
   }, [user]);
+
+  // Fall back to the personal ledger if the active one isn't one I belong to.
+  useEffect(() => {
+    if (ledgers.length && !ledgers.some((l) => l.id === ledgerId)) setLedgerId(user.uid);
+  }, [ledgers, ledgerId, user.uid]);
+
+  // Persist the active ledger and catch up its recurring transactions.
+  useEffect(() => {
+    if (!ready) return;
+    localStorage.setItem(activeLedgerKey(user.uid), ledgerId);
+    void materializeRecurring(ledgerId, user.uid).catch(console.error);
+  }, [ready, ledgerId, user.uid]);
 
   useEffect(() => {
     if (!undoId) return;
@@ -55,11 +72,18 @@ function AuthedApp({ user }: { user: User }) {
     return () => clearTimeout(timer);
   }, [undoId]);
 
-  if (!ledgerId) return <Splash />;
+  if (!ready) return <Splash />;
 
   const deleteTx = (id: string) => {
     void transactionRepo.softDelete(ledgerId, id);
     setUndoId(id);
+  };
+
+  const createLedger = (name: string) => {
+    void ledgerRepo.create(user.uid, name).then((id) => {
+      setTab("timeline");
+      setLedgerId(id);
+    });
   };
 
   return (
@@ -69,6 +93,9 @@ function AuthedApp({ user }: { user: User }) {
           ledgerId={ledgerId}
           accounts={accounts}
           categories={categories}
+          ledgers={ledgers}
+          onSelectLedger={setLedgerId}
+          onCreateLedger={createLedger}
           onEdit={(tx) => setEditor({ tx })}
           onDelete={(tx) => deleteTx(tx.id)}
         />

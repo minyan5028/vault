@@ -1,12 +1,12 @@
-import { doc, getDoc, serverTimestamp, setDoc, writeBatch } from "firebase/firestore";
+import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import { db } from "../lib/firebase";
-import { DEFAULT_ACCOUNTS, DEFAULT_CATEGORIES, DEFAULT_INCOME_CATEGORIES } from "./defaults";
+import { seedLedgerCatalog } from "./seedCatalog";
 
 /**
  * Ensure the signed-in user has a `users/{uid}` doc and a personal Ledger.
  * The personal ledger id is the uid (one per user); shared ledgers get their
- * own ids later. Returns the personal ledger id. Safe to call on every sign-in.
+ * own ids. Returns the personal ledger id. Safe to call on every sign-in.
  */
 export async function provisionPersonalLedger(user: User): Promise<string> {
   const ledgerId = user.uid;
@@ -28,41 +28,12 @@ export async function provisionPersonalLedger(user: User): Promise<string> {
       name: "Personal",
       baseCurrency: "TWD",
       members: { [user.uid]: "owner" },
+      memberIds: [user.uid],
+      invitedEmails: [],
       createdBy: user.uid,
       createdAt: serverTimestamp(),
     });
-    // Seed a starter catalog so a fresh ledger is usable immediately.
-    const batch = writeBatch(db);
-    DEFAULT_ACCOUNTS.forEach((a, i) =>
-      batch.set(doc(db, "ledgers", ledgerId, "accounts", a.id), {
-        name: a.name,
-        type: "other",
-        currency: "TWD",
-        archived: false,
-        sortOrder: i,
-      }),
-    );
-    DEFAULT_CATEGORIES.forEach((c, i) =>
-      batch.set(doc(db, "ledgers", ledgerId, "categories", c.id), {
-        name: c.name,
-        icon: c.icon,
-        type: "expense",
-        parentId: null,
-        archived: false,
-        sortOrder: i,
-      }),
-    );
-    DEFAULT_INCOME_CATEGORIES.forEach((c, i) =>
-      batch.set(doc(db, "ledgers", ledgerId, "categories", c.id), {
-        name: c.name,
-        icon: c.icon,
-        type: "income",
-        parentId: null,
-        archived: false,
-        sortOrder: i,
-      }),
-    );
-    await batch.commit();
+    await seedLedgerCatalog(ledgerId);
   }
 
   return ledgerId;

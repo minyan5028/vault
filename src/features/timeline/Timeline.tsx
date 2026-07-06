@@ -7,7 +7,8 @@ import { useMonthTransactions } from "../../data/useMonthTransactions";
 import { MonthSelector } from "../../components/MonthSelector";
 import { StatCell } from "../../components/StatCell";
 import { EntryRow } from "../../components/EntryRow";
-import type { Account, Category, EventType, Transaction } from "../../domain/types";
+import { LedgerSwitcher } from "../../components/LedgerSwitcher";
+import type { Account, Category, EventType, Ledger, Transaction } from "../../domain/types";
 
 const FILTERS: ("all" | EventType)[] = ["all", "expense", "income", "transfer"];
 const BASE_CURRENCY = "TWD";
@@ -20,12 +21,18 @@ export function Timeline({
   ledgerId,
   accounts,
   categories,
+  ledgers,
+  onSelectLedger,
+  onCreateLedger,
   onEdit,
   onDelete,
 }: {
   ledgerId: string;
   accounts: Account[];
   categories: Category[];
+  ledgers: Ledger[];
+  onSelectLedger: (id: string) => void;
+  onCreateLedger: (name: string) => void;
   onEdit: (tx: Transaction) => void;
   onDelete: (tx: Transaction) => void;
 }) {
@@ -46,7 +53,12 @@ export function Timeline({
     <main className="min-h-dvh bg-slate-900 text-slate-100">
       <div className="mx-auto max-w-md px-4 pb-28">
         <header className="py-3">
-          <span className="text-lg font-semibold tracking-tight">{t("appName")}</span>
+          <LedgerSwitcher
+            ledgers={ledgers}
+            activeId={ledgerId}
+            onSelect={onSelectLedger}
+            onCreate={onCreateLedger}
+          />
         </header>
 
         <MonthSelector month={month} onShift={(d) => setMonth((m) => shiftMonth(m, d))} />
