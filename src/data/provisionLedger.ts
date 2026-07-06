@@ -22,8 +22,15 @@ export async function provisionPersonalLedger(user: User): Promise<string> {
   );
 
   const ledgerRef = doc(db, "ledgers", ledgerId);
-  const snap = await getDoc(ledgerRef);
-  if (!snap.exists()) {
+  // A brand-new user can't read their not-yet-created personal ledger under the
+  // membership rules, so a read error means "doesn't exist yet" → create it.
+  let exists = false;
+  try {
+    exists = (await getDoc(ledgerRef)).exists();
+  } catch {
+    exists = false;
+  }
+  if (!exists) {
     await setDoc(ledgerRef, {
       name: "Personal",
       baseCurrency: "TWD",

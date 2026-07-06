@@ -58,7 +58,9 @@ function AuthedApp({ user }: { user: User }) {
   // Ensure the personal ledger exists, then reveal the app.
   useEffect(() => {
     let active = true;
-    provisionPersonalLedger(user).then(() => active && setReady(true));
+    provisionPersonalLedger(user)
+      .catch((e) => console.error("provision", e))
+      .finally(() => active && setReady(true));
     return () => {
       active = false;
     };
