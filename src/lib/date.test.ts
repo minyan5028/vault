@@ -1,0 +1,44 @@
+import { describe, it, expect } from "vitest";
+import {
+  addDays,
+  addMonthsClamped,
+  shiftMonth,
+  yearMonthOf,
+  toDateInputValue,
+  fromDateInputValue,
+} from "./date";
+
+describe("addDays", () => {
+  it("adds days across a month boundary", () => {
+    expect(toDateInputValue(addDays(new Date(2026, 0, 30), 5))).toBe("2026-02-04");
+  });
+});
+
+describe("addMonthsClamped", () => {
+  it("clamps the day to a shorter target month", () => {
+    // 2026 is not a leap year → Feb has 28 days
+    expect(toDateInputValue(addMonthsClamped(new Date(2026, 0, 31), 1))).toBe("2026-02-28");
+    // 2024 is a leap year → Feb has 29 days
+    expect(toDateInputValue(addMonthsClamped(new Date(2024, 0, 31), 1))).toBe("2024-02-29");
+  });
+  it("keeps the day when it fits", () => {
+    expect(toDateInputValue(addMonthsClamped(new Date(2026, 0, 15), 2))).toBe("2026-03-15");
+  });
+  it("crosses year boundaries", () => {
+    expect(toDateInputValue(addMonthsClamped(new Date(2026, 11, 10), 1))).toBe("2027-01-10");
+  });
+});
+
+describe("shiftMonth", () => {
+  it("shifts a yyyy-mm key across years", () => {
+    expect(shiftMonth("2026-01", -1)).toBe("2025-12");
+    expect(shiftMonth("2026-12", 1)).toBe("2027-01");
+  });
+});
+
+describe("date input round-trip", () => {
+  it("round-trips local dates without a UTC shift", () => {
+    expect(toDateInputValue(fromDateInputValue("2026-07-05"))).toBe("2026-07-05");
+    expect(yearMonthOf(new Date(2026, 6, 5))).toBe("2026-07");
+  });
+});

@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { formatMoney, toMinor, toMajor } from "../../lib/money";
 import { toDateInputValue, fromDateInputValue } from "../../lib/date";
 import { recurringRepo, type RecurringInput } from "../../data/recurringRepo";
+import { TypeToggle } from "../../components/TypeToggle";
 import type {
   Account,
   Category,
@@ -11,7 +12,6 @@ import type {
   RecurringRule,
 } from "../../domain/types";
 
-const TYPES: EventType[] = ["expense", "income", "transfer"];
 const FREQS: RecurringFrequency[] = ["monthly", "weekly"];
 
 function safeMinor(text: string): number {
@@ -181,24 +181,13 @@ function RuleForm({
           <span className="w-8" />
         </header>
 
-        <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-800 p-1 text-sm">
-          {TYPES.map((ty) => (
-            <button
-              key={ty}
-              type="button"
-              onClick={() => {
-                setType(ty);
-                setCategoryId("");
-              }}
-              className={
-                "rounded-lg py-2 font-medium " +
-                (type === ty ? "bg-slate-100 text-slate-900" : "text-slate-300")
-              }
-            >
-              {t(`type_${ty}` as "type_expense")}
-            </button>
-          ))}
-        </div>
+        <TypeToggle
+          value={type}
+          onChange={(ty) => {
+            setType(ty);
+            setCategoryId("");
+          }}
+        />
 
         <input
           inputMode="decimal"

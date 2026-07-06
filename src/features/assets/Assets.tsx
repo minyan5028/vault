@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { formatMoney } from "../../lib/money";
+import { netFlowByAccount } from "../../lib/balance";
 import { transactionRepo } from "../../data/transactionRepo";
 import type { Account, Transaction } from "../../domain/types";
 
@@ -30,19 +31,7 @@ export function Assets({
     };
   }, [ledgerId]);
 
-  const netFlow = useMemo(() => {
-    const m = new Map<string, number>();
-    const add = (id: string, v: number) => m.set(id, (m.get(id) ?? 0) + v);
-    for (const tx of txns ?? []) {
-      if (tx.type === "expense") add(tx.accountId, -tx.baseAmount);
-      else if (tx.type === "income") add(tx.accountId, tx.baseAmount);
-      else if (tx.type === "transfer") {
-        add(tx.accountId, -tx.baseAmount);
-        if (tx.toAccountId) add(tx.toAccountId, tx.baseAmount);
-      }
-    }
-    return m;
-  }, [txns]);
+  const netFlow = useMemo(() => netFlowByAccount(txns ?? []), [txns]);
 
   const loading = txns === null;
   const rows = accounts.map((a) => ({ account: a, balance: a.openingBalance + (netFlow.get(a.id) ?? 0) }));

@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { formatMoney } from "../../lib/money";
-import { yearMonthOf, shiftMonth, monthLabel } from "../../lib/date";
+import { yearMonthOf, shiftMonth } from "../../lib/date";
 import { useMonthTransactions } from "../../data/useMonthTransactions";
+import { MonthSelector } from "../../components/MonthSelector";
 import type { Category } from "../../domain/types";
 
 const BASE_CURRENCY = "TWD";
@@ -36,26 +37,7 @@ export function Stats({ ledgerId, categories }: { ledgerId: string; categories: 
           <span className="text-lg font-semibold tracking-tight">{t("stats")}</span>
         </header>
 
-        {/* Month selector */}
-        <div className="flex items-center justify-between py-1 text-slate-300">
-          <button
-            type="button"
-            onClick={() => setMonth((m) => shiftMonth(m, -1))}
-            aria-label="previous month"
-            className="px-3 py-1 text-xl text-slate-400"
-          >
-            ‹
-          </button>
-          <span className="text-base font-medium">{monthLabel(month, locale)}</span>
-          <button
-            type="button"
-            onClick={() => setMonth((m) => shiftMonth(m, 1))}
-            aria-label="next month"
-            className="px-3 py-1 text-xl text-slate-400"
-          >
-            ›
-          </button>
-        </div>
+        <MonthSelector month={month} onShift={(d) => setMonth((m) => shiftMonth(m, d))} />
 
         {/* Total expense */}
         <div className="border-y border-slate-800 py-3 text-center">

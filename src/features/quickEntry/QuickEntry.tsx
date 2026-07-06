@@ -4,9 +4,7 @@ import { formatMoney, toMinor, toMajor } from "../../lib/money";
 import { toDateInputValue, fromDateInputValue } from "../../lib/date";
 import type { Account, Category, EventType, Transaction } from "../../domain/types";
 import { transactionRepo, type EntryDraft, type TitleSuggestion } from "../../data/transactionRepo";
-import { LanguageToggle } from "../../components/LanguageToggle";
-
-const TYPES: EventType[] = ["expense", "income", "transfer"];
+import { TypeToggle } from "../../components/TypeToggle";
 
 interface QuickEntryProps {
   /** When present, edit this transaction instead of creating a new one. */
@@ -154,32 +152,18 @@ export function QuickEntry({
           <span className="text-sm font-semibold text-slate-300">
             {t(initial ? "edit" : "newEntry")}
           </span>
-          <LanguageToggle />
+          <span className="w-8" />
         </header>
 
-        {/* Type toggle */}
-        <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-800 p-1 text-sm">
-          {TYPES.map((ty) => (
-            <button
-              key={ty}
-              type="button"
-              onClick={() => {
-                setType(ty);
-                if (ty !== "transfer") {
-                  setCategoryId(
-                    categories.find((c) => c.type === ty && !c.archived)?.id ?? null,
-                  );
-                }
-              }}
-              className={
-                "rounded-lg py-2 font-medium transition-colors " +
-                (type === ty ? "bg-slate-100 text-slate-900" : "text-slate-300")
-              }
-            >
-              {t(`type_${ty}` as "type_expense")}
-            </button>
-          ))}
-        </div>
+        <TypeToggle
+          value={type}
+          onChange={(ty) => {
+            setType(ty);
+            if (ty !== "transfer") {
+              setCategoryId(categories.find((c) => c.type === ty && !c.archived)?.id ?? null);
+            }
+          }}
+        />
 
         {/* Amount (OS numeric keyboard) + title */}
         <div className="py-6 text-center">
