@@ -1,17 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { yearMonthOf, shiftMonth } from "../../lib/date";
 import { groupByDay, dayLabel } from "../../lib/grouping";
-import { useMonthTransactions } from "../../data/useMonthTransactions";
-import { transactionRepo } from "../../data/transactionRepo";
-import { effectOn, depositsWithdrawals, runningBalances } from "../../lib/balance";
+import { useAccountTransactions } from "../../data/useAccountTransactions";
+import { depositsWithdrawals, runningBalances } from "../../lib/balance";
 import { MonthSelector } from "../../components/MonthSelector";
 import { StatCell } from "../../components/StatCell";
 import { EntryRow } from "../../components/EntryRow";
 import type { Account, Category, Transaction } from "../../domain/types";
 
-/** One account's transactions — the Timeline scoped to a single account, with
- *  per-row running balance. */
+/** One account's transactions — scoped to that account (no full-ledger scan),
+ *  with per-row running balance over its full history. */
 export function AccountDetail({
   ledgerId,
   account,
@@ -34,41 +33,21 @@ export function AccountDetail({
   const { t, i18n } = useTranslation();
   const locale = i18n.language;
   const [month, setMonth] = useState<string>(() => yearMonthOf(new Date()));
-  const [allTxns, setAllTxns] = useState<Transaction[] | null>(null);
-  const monthTxns = useMonthTransactions(ledgerId, month);
+  const history = useAccountTransactions(ledgerId, account.id); // newest first
 
-  // One-shot history (for the balance carried into the viewed month).
-  useEffect(() => {
-    let cancelled = false;
-    transactionRepo
-      .fetchAll(ledgerId)
-      .then((x) => !cancelled && setAllTxns(x))
-      .catch(console.error);
-    return () => {
-      cancelled = true;
-    };
-  }, [ledgerId]);
-
-  const mine = useMemo(
-    () => monthTxns.filter((tx) => tx.accountId === account.id || tx.toAccountId === account.id),
-    [monthTxns, account.id],
-  );
+  const mine = useMemo(() => history.filter((tx) => tx.yearMonth === month), [history, month]);
   const { deposits, withdrawals } = useMemo(
     () => depositsWithdrawals(mine, account.id),
     [mine, account.id],
   );
 
-  // Running balance: opening + all prior-month effects, then cumulate within the
-  // month in chronological order (live, so edits reflect).
+  // Running balance from the full account history (oldest first), keyed by id.
   const runningMap = useMemo(() => {
-    if (allTxns === null) return new Map<string, number>();
-    let before = account.openingBalance;
-    for (const tx of allTxns) if (tx.yearMonth < month) before += effectOn(tx, account.id);
-    const asc = [...mine].sort(
+    const asc = [...history].sort(
       (a, b) => a.date.getTime() - b.date.getTime() || a.createdAt.getTime() - b.createdAt.getTime(),
     );
-    return runningBalances(asc, account.id, before);
-  }, [allTxns, mine, month, account.id, account.openingBalance]);
+    return runningBalances(asc, account.id, account.openingBalance);
+  }, [history, account.id, account.openingBalance]);
 
   const groups = groupByDay(mine);
 

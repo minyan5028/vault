@@ -1,13 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { formatMoney } from "../../lib/money";
-import { netFlowByAccount } from "../../lib/balance";
-import { transactionRepo } from "../../data/transactionRepo";
-import type { Account, Transaction } from "../../domain/types";
+import { useBalances } from "../../data/useBalances";
+import type { Account } from "../../domain/types";
 
 const BASE_CURRENCY = "TWD";
 
-/** Net worth: each account's balance = opening balance + net recorded flow. */
+/** Net worth: each account's balance = opening balance + net recorded flow.
+ *  Balances come from the ledger's maintained rollup (one doc), not a full scan. */
 export function Assets({
   ledgerId,
   accounts,
@@ -18,23 +17,9 @@ export function Assets({
   onOpenAccount: (account: Account, balance: number) => void;
 }) {
   const { t, i18n } = useTranslation();
-  const [txns, setTxns] = useState<Transaction[] | null>(null);
+  const netFlow = useBalances(ledgerId);
 
-  useEffect(() => {
-    let cancelled = false;
-    transactionRepo
-      .fetchAll(ledgerId)
-      .then((x) => !cancelled && setTxns(x))
-      .catch(console.error);
-    return () => {
-      cancelled = true;
-    };
-  }, [ledgerId]);
-
-  const netFlow = useMemo(() => netFlowByAccount(txns ?? []), [txns]);
-
-  const loading = txns === null;
-  const rows = accounts.map((a) => ({ account: a, balance: a.openingBalance + (netFlow.get(a.id) ?? 0) }));
+  const rows = accounts.map((a) => ({ account: a, balance: a.openingBalance + (netFlow[a.id] ?? 0) }));
   const total = rows.reduce((s, r) => s + r.balance, 0);
 
   return (
@@ -47,7 +32,7 @@ export function Assets({
         <div className="mt-1 border-y border-slate-800 py-3 text-center">
           <p className="text-xs text-slate-500">{t("totalAssets")}</p>
           <p className="mt-0.5 text-2xl font-semibold tabular-nums">
-            {loading ? "…" : formatMoney(total, BASE_CURRENCY, i18n.language)}
+            {formatMoney(total, BASE_CURRENCY, i18n.language)}
           </p>
         </div>
 
@@ -65,7 +50,7 @@ export function Assets({
                   {r.account.name}
                 </span>
                 <span className="text-sm tabular-nums text-slate-100">
-                  {loading ? "…" : formatMoney(r.balance, BASE_CURRENCY, i18n.language)}
+                  {formatMoney(r.balance, BASE_CURRENCY, i18n.language)}
                 </span>
               </button>
             </li>

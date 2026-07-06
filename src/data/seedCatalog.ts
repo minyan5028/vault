@@ -35,5 +35,7 @@ export async function seedLedgerCatalog(ledgerId: string): Promise<void> {
       sortOrder: i,
     }),
   );
+  // Empty balance rollup, maintained incrementally by transactionRepo.
+  batch.set(doc(db, "ledgers", ledgerId, "meta", "balances"), { netFlow: {} });
   await batch.commit();
 }

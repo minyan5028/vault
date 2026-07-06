@@ -1,22 +1,26 @@
 /**
- * The thin persistence seam for Financial Events. All Firestore access for
- * transactions goes through here, scoped by `ledgerId` (never a hardcoded
- * ledger — Phase 2 sharing depends on this). Keeps Firestore out of the rest
- * of the app.
+ * The thin persistence seam for Financial Events, scoped by `ledgerId`.
+ *
+ * Every write also maintains a per-account balance rollup at
+ * `ledgers/{id}/meta/balances` ({ netFlow: { accountId: minorUnits } }) via
+ * atomic increments, so the Assets page reads one doc instead of every
+ * transaction. Edits/deletes read the old doc in a transaction to reverse its
+ * effect. See recomputeBalances for the one-time backfill / repair.
  */
 import {
   Timestamp,
-  addDoc,
   collection,
   doc,
   getDocs,
+  increment,
   limit,
   onSnapshot,
   orderBy,
   query,
+  runTransaction,
   serverTimestamp,
-  updateDoc,
   where,
+  writeBatch,
   type DocumentData,
   type QueryDocumentSnapshot,
   type Unsubscribe,
@@ -25,12 +29,11 @@ import { db } from "../lib/firebase";
 import { yearMonthOf } from "../lib/date";
 import type { EventType, Transaction } from "../domain/types";
 
-/** Fields the caller provides; server-managed fields are added by the repo. */
 export interface NewTransactionInput {
   type: EventType;
-  amount: number; // minor units (×100)
+  amount: number;
   currency: string;
-  baseAmount: number; // minor units (×100)
+  baseAmount: number;
   baseCurrency: string;
   fxRate: number;
   date: Date;
@@ -45,7 +48,6 @@ export interface NewTransactionInput {
 /** What Quick Entry produces; the repo/caller adds `createdBy`. */
 export type EntryDraft = Omit<NewTransactionInput, "createdBy">;
 
-/** A title autocomplete suggestion, carrying the last-used shape for that title. */
 export interface TitleSuggestion {
   title: string;
   type: EventType;
@@ -54,8 +56,35 @@ export interface TitleSuggestion {
   toAccountId: string | null;
 }
 
-function transactionsCol(ledgerId: string) {
-  return collection(db, "ledgers", ledgerId, "transactions");
+const transactionsCol = (ledgerId: string) => collection(db, "ledgers", ledgerId, "transactions");
+const rollupRef = (ledgerId: string) => doc(db, "ledgers", ledgerId, "meta", "balances");
+
+const cmpDesc = (a: Transaction, b: Transaction) =>
+  b.date.getTime() - a.date.getTime() || b.createdAt.getTime() - a.createdAt.getTime();
+
+/** Signed effect on each account's balance (minor units), scaled by `sign`. */
+function accountDeltas(
+  t: { type: EventType; accountId: string; toAccountId: string | null; baseAmount: number },
+  sign: 1 | -1,
+): Record<string, number> {
+  const d: Record<string, number> = {};
+  const add = (acc: string | null, v: number) => {
+    if (acc) d[acc] = (d[acc] ?? 0) + v * sign;
+  };
+  if (t.type === "income") add(t.accountId, t.baseAmount);
+  else if (t.type === "expense") add(t.accountId, -t.baseAmount);
+  else if (t.type === "transfer") {
+    add(t.accountId, -t.baseAmount);
+    add(t.toAccountId, t.baseAmount);
+  }
+  return d;
+}
+
+/** A set-merge payload that atomically increments the rollup's netFlow map. */
+function rollupDelta(deltas: Record<string, number>) {
+  const netFlow: Record<string, unknown> = {};
+  for (const [acc, v] of Object.entries(deltas)) if (v !== 0) netFlow[acc] = increment(v);
+  return { netFlow };
 }
 
 function fromSnapshot(snap: QueryDocumentSnapshot<DocumentData>): Transaction {
@@ -83,21 +112,19 @@ function fromSnapshot(snap: QueryDocumentSnapshot<DocumentData>): Transaction {
   };
 }
 
-/** Map docs → Transactions, drop soft-deleted, newest first (date, then entry time). */
 function sortActive(docs: QueryDocumentSnapshot<DocumentData>[]): Transaction[] {
   return docs
     .map(fromSnapshot)
     .filter((t) => t.deletedAt === null)
-    .sort(
-      (a, b) =>
-        b.date.getTime() - a.date.getTime() || b.createdAt.getTime() - a.createdAt.getTime(),
-    );
+    .sort(cmpDesc);
 }
 
 export const transactionRepo = {
-  /** Record a Financial Event. Returns the new document id. */
+  /** Record a Financial Event and bump the rollup. Returns the new id. */
   async add(ledgerId: string, input: NewTransactionInput): Promise<string> {
-    const ref = await addDoc(transactionsCol(ledgerId), {
+    const ref = doc(transactionsCol(ledgerId));
+    const batch = writeBatch(db);
+    batch.set(ref, {
       ...input,
       date: Timestamp.fromDate(input.date),
       yearMonth: yearMonthOf(input.date),
@@ -105,76 +132,18 @@ export const transactionRepo = {
       updatedAt: serverTimestamp(),
       deletedAt: null,
     });
+    batch.set(rollupRef(ledgerId), rollupDelta(accountDeltas(input, 1)), { merge: true });
+    await batch.commit();
     return ref.id;
   },
 
-  /** This-month Timeline: not deleted, newest first. */
-  async listByMonth(ledgerId: string, yearMonth: string): Promise<Transaction[]> {
-    const q = query(
-      transactionsCol(ledgerId),
-      where("yearMonth", "==", yearMonth),
-      where("deletedAt", "==", null),
-      orderBy("date", "desc"),
-    );
-    const snap = await getDocs(q);
-    return snap.docs.map(fromSnapshot);
-  },
-
-  /** One-shot fetch for a month (prefers server when online). */
+  /** This-month Timeline: not deleted, newest first (composite-index free query). */
   async fetchMonth(ledgerId: string, yearMonth: string): Promise<Transaction[]> {
     const q = query(transactionsCol(ledgerId), where("yearMonth", "==", yearMonth));
     return sortActive((await getDocs(q)).docs);
   },
 
-  /** All active transactions (for deriving balances). */
-  async fetchAll(ledgerId: string): Promise<Transaction[]> {
-    return sortActive((await getDocs(transactionsCol(ledgerId))).docs);
-  },
-
-  /**
-   * Distinct historical titles starting with `prefix`, for entry autocomplete
-   * (recording the same shop again). Prefix match via a title range query
-   * (single-field index, no composite index needed).
-   */
-  async suggestTitles(ledgerId: string, prefix: string, max = 6): Promise<TitleSuggestion[]> {
-    const p = prefix.trim();
-    if (!p) return [];
-    const q = query(
-      transactionsCol(ledgerId),
-      where("title", ">=", p),
-      where("title", "<=", p + ""),
-      orderBy("title"),
-      limit(30),
-    );
-    const snap = await getDocs(q);
-    // Keep the most recent transaction per distinct title (its category/account).
-    const best = new Map<string, Transaction>();
-    for (const d of snap.docs) {
-      const tx = fromSnapshot(d);
-      if (tx.deletedAt) continue;
-      const title = tx.title.trim();
-      if (!title) continue;
-      const cur = best.get(title);
-      if (!cur || tx.date.getTime() > cur.date.getTime()) best.set(title, tx);
-    }
-    return [...best.values()]
-      .sort((a, b) => b.date.getTime() - a.date.getTime())
-      .slice(0, max)
-      .map((tx) => ({
-        title: tx.title.trim(),
-        type: tx.type,
-        categoryId: tx.categoryId,
-        accountId: tx.accountId,
-        toAccountId: tx.toAccountId,
-      }));
-  },
-
-  /**
-   * Live subscription to a month, updating on every change (and offline via the
-   * local cache). Uses an equality-only query so no composite index is needed
-   * yet; sorting and the deletedAt filter are applied client-side (month volume
-   * is small). Returns an unsubscribe function.
-   */
+  /** Live subscription to a month (offline-capable; sort/filter client-side). */
   subscribeByMonth(
     ledgerId: string,
     yearMonth: string,
@@ -188,33 +157,136 @@ export const transactionRepo = {
     );
   },
 
-  /** Edit in place (loose event model): update fields and bump updatedAt. */
-  async update(
+  /** Live subscription to one account's full history (as source or destination). */
+  subscribeByAccount(
     ledgerId: string,
-    id: string,
-    patch: Partial<NewTransactionInput>,
-  ): Promise<void> {
-    const data: Record<string, unknown> = { ...patch, updatedAt: serverTimestamp() };
-    if (patch.date) {
-      data.date = Timestamp.fromDate(patch.date);
-      data.yearMonth = yearMonthOf(patch.date);
-    }
-    await updateDoc(doc(transactionsCol(ledgerId), id), data);
+    accountId: string,
+    cb: (txns: Transaction[]) => void,
+  ): Unsubscribe {
+    let fromA: Transaction[] = [];
+    let fromB: Transaction[] = [];
+    const emit = () => {
+      const m = new Map<string, Transaction>();
+      for (const t of [...fromA, ...fromB]) m.set(t.id, t);
+      cb([...m.values()].filter((t) => t.deletedAt === null).sort(cmpDesc));
+    };
+    const u1 = onSnapshot(
+      query(transactionsCol(ledgerId), where("accountId", "==", accountId)),
+      (s) => {
+        fromA = s.docs.map(fromSnapshot);
+        emit();
+      },
+      (e) => console.error("byAccount(from)", e),
+    );
+    const u2 = onSnapshot(
+      query(transactionsCol(ledgerId), where("toAccountId", "==", accountId)),
+      (s) => {
+        fromB = s.docs.map(fromSnapshot);
+        emit();
+      },
+      (e) => console.error("byAccount(to)", e),
+    );
+    return () => {
+      u1();
+      u2();
+    };
   },
 
-  /** Soft delete (ADR-0004): sets deletedAt; excluded from all queries. */
+  /** Live per-account balance rollup ({ accountId: netFlow minor units }). */
+  subscribeBalances(ledgerId: string, cb: (netFlow: Record<string, number>) => void): Unsubscribe {
+    return onSnapshot(
+      rollupRef(ledgerId),
+      (snap) => cb((snap.data()?.netFlow as Record<string, number>) ?? {}),
+      (e) => console.error("balances", e),
+    );
+  },
+
+  /** Edit in place (loose model): reverse the old effect, apply the new one. */
+  async update(ledgerId: string, id: string, patch: Partial<NewTransactionInput>): Promise<void> {
+    await runTransaction(db, async (tx) => {
+      const ref = doc(transactionsCol(ledgerId), id);
+      const snap = await tx.get(ref);
+      if (!snap.exists()) return;
+      const old = snap.data();
+      const data: Record<string, unknown> = { ...patch, updatedAt: serverTimestamp() };
+      if (patch.date) {
+        data.date = Timestamp.fromDate(patch.date);
+        data.yearMonth = yearMonthOf(patch.date);
+      }
+      tx.update(ref, data);
+
+      const merged = {
+        type: (patch.type ?? old.type) as EventType,
+        accountId: patch.accountId ?? old.accountId,
+        toAccountId: patch.toAccountId !== undefined ? patch.toAccountId : (old.toAccountId ?? null),
+        baseAmount: patch.baseAmount ?? old.baseAmount,
+      };
+      const deltas: Record<string, number> = {};
+      const merge = (m: Record<string, number>) => {
+        for (const [k, v] of Object.entries(m)) deltas[k] = (deltas[k] ?? 0) + v;
+      };
+      if ((old.deletedAt ?? null) === null) merge(accountDeltas(old as never, -1));
+      merge(accountDeltas(merged, 1));
+      tx.set(rollupRef(ledgerId), rollupDelta(deltas), { merge: true });
+    });
+  },
+
+  /** Soft delete (ADR-0004): mark deleted and remove its effect from the rollup. */
   async softDelete(ledgerId: string, id: string): Promise<void> {
-    await updateDoc(doc(transactionsCol(ledgerId), id), {
-      deletedAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
+    await runTransaction(db, async (tx) => {
+      const ref = doc(transactionsCol(ledgerId), id);
+      const snap = await tx.get(ref);
+      if (!snap.exists() || (snap.data().deletedAt ?? null) !== null) return;
+      tx.update(ref, { deletedAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      tx.set(rollupRef(ledgerId), rollupDelta(accountDeltas(snap.data() as never, -1)), {
+        merge: true,
+      });
     });
   },
 
-  /** Undo a soft delete: clears deletedAt so it reappears in queries. */
+  /** Undo a soft delete and re-apply its effect. */
   async restore(ledgerId: string, id: string): Promise<void> {
-    await updateDoc(doc(transactionsCol(ledgerId), id), {
-      deletedAt: null,
-      updatedAt: serverTimestamp(),
+    await runTransaction(db, async (tx) => {
+      const ref = doc(transactionsCol(ledgerId), id);
+      const snap = await tx.get(ref);
+      if (!snap.exists() || (snap.data().deletedAt ?? null) === null) return;
+      tx.update(ref, { deletedAt: null, updatedAt: serverTimestamp() });
+      tx.set(rollupRef(ledgerId), rollupDelta(accountDeltas(snap.data() as never, 1)), {
+        merge: true,
+      });
     });
+  },
+
+  /** Distinct historical titles starting with `prefix`, for entry autocomplete. */
+  async suggestTitles(ledgerId: string, prefix: string, max = 6): Promise<TitleSuggestion[]> {
+    const p = prefix.trim();
+    if (!p) return [];
+    const q = query(
+      transactionsCol(ledgerId),
+      where("title", ">=", p),
+      where("title", "<=", p + ""),
+      orderBy("title"),
+      limit(30),
+    );
+    const snap = await getDocs(q);
+    const best = new Map<string, Transaction>();
+    for (const d of snap.docs) {
+      const t = fromSnapshot(d);
+      if (t.deletedAt) continue;
+      const title = t.title.trim();
+      if (!title) continue;
+      const cur = best.get(title);
+      if (!cur || t.date.getTime() > cur.date.getTime()) best.set(title, t);
+    }
+    return [...best.values()]
+      .sort((a, b) => b.date.getTime() - a.date.getTime())
+      .slice(0, max)
+      .map((t) => ({
+        title: t.title.trim(),
+        type: t.type,
+        categoryId: t.categoryId,
+        accountId: t.accountId,
+        toAccountId: t.toAccountId,
+      }));
   },
 };
