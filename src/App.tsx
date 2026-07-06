@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { User } from "firebase/auth";
 import type { Transaction } from "./domain/types";
@@ -54,9 +54,14 @@ function AuthedApp({ user }: { user: User }) {
     };
   }, [user]);
 
-  // Fall back to the personal ledger if the active one isn't one I belong to.
+  // Validate the persisted active ledger once (after the first list loads), so
+  // a stale/left ledger falls back to personal — but don't fight a just-created
+  // ledger that the subscription hasn't delivered yet.
+  const validatedRef = useRef(false);
   useEffect(() => {
-    if (ledgers.length && !ledgers.some((l) => l.id === ledgerId)) setLedgerId(user.uid);
+    if (validatedRef.current || !ledgers.length) return;
+    validatedRef.current = true;
+    if (!ledgers.some((l) => l.id === ledgerId)) setLedgerId(user.uid);
   }, [ledgers, ledgerId, user.uid]);
 
   // Persist the active ledger and catch up its recurring transactions.
