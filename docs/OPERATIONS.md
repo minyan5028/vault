@@ -65,6 +65,36 @@ These values are **not secret** (they identify the project; security comes from
 Auth + Firestore rules). But Vite bakes them into the build at build time, so
 **after changing `.env.local` you must rebuild** for the change to take effect.
 
+### Developing on Windows
+
+The stack is cross-platform; `npm install / dev / test / build` are identical.
+A few OS-specific notes:
+
+- **Bring the gitignored secrets over yourself** — they aren't in git:
+  `.env.local` and `serviceAccountKey.json`. Transfer the service-account key
+  securely (not email/public link); place both in the project root.
+- **Line endings:** `.gitattributes` forces LF, so CRLF won't show up as spurious
+  diffs. Leave Git's `core.autocrlf` at its default.
+- **Deploy env var:** the Linux/macOS form
+  `GOOGLE_APPLICATION_CREDENTIALS="$PWD/serviceAccountKey.json" npx firebase-tools deploy`
+  does **not** work in PowerShell/CMD. Instead log in once and use the npm
+  script (see §4, option A):
+  ```
+  npx firebase-tools login
+  npm run deploy
+  ```
+  (If you must use the key non-interactively in PowerShell:
+  `$env:GOOGLE_APPLICATION_CREDENTIALS="$PWD\serviceAccountKey.json"` then run
+  the deploy command.)
+- **Admin scripts** (`node scripts/*.mjs`) run the same; they need
+  `serviceAccountKey.json` in the root.
+- **Node version:** match what you use on macOS (currently v26). `sharp` (icon
+  generation) has Windows prebuilds, so `npm install` handles it.
+
+Moving to a new machine, in short: `git clone` → drop in `.env.local` +
+`serviceAccountKey.json` → `npm install` → `npm run dev`; deploy via
+`firebase login` + `npm run deploy`.
+
 ---
 
 ## 4. Changing code and pushing it live (deploy)
