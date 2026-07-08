@@ -118,21 +118,22 @@ ledger and see each other's entries live, while personal ledgers stay private.
 
 ## Phase 3 — Analytics, Budgeting & Reporting 🔜
 
-**Goal:** understand spending and stay on budget. **← next phase.**
+**Goal:** understand spending and stay on budget. **← in progress.**
 
-| Deliverable | Size |
-|-------------|------|
-| Monthly summary by category (sum `baseAmount`) | M |
-| Spending trend over time (month-over-month) | M |
-| Charts — category breakdown + trend (follow dataviz conventions) | M |
-| **Budgets per account-bucket first** (envelope style), category budgets later | L |
-| Budget progress + overspend indicators | M |
-| Filters & search (category, account, date range, title text) | M |
-| Data export (CSV / JSON) — delivers "own your data" for real | S |
+| Deliverable | Size | Status |
+|-------------|------|--------|
+| Monthly summary by category (sum `baseAmount`) | M | ✅ (Stats, from rollups) |
+| Spending trend over time (month-over-month) | M | ✅ (trend line chart) |
+| Charts — category breakdown + trend (follow dataviz conventions) | M | ⚠️ trend line done; category still bars (pie TBD) |
+| **Budgets per account-bucket first** (envelope style), category budgets later | L | ⬜ (deferred — not a current pain; adds `budgets` collection, no migration) |
+| Budget progress + overspend indicators | M | ⬜ |
+| Filters & search (category, account, date range, title text) | M | ⬜ (partly covered by Stats; content-by-title view still TODO) |
+| Data export (CSV / JSON) — delivers "own your data" for real | S | ✅ (Backup: JSON + CSV export/import) |
 
-**Data model impact:** new `budgets` collection (keyed by account first);
-optional monthly **rollup docs** if client-side aggregation gets slow (data is
-~1k txns/yr, so likely not needed soon).
+**Data model impact:** monthly **rollup docs** shipped
+(`ledgers/{id}/rollups/{yearMonth}`, maintained on write — see DATA_MODEL) so
+Stats/trends read a few small docs instead of every transaction. Budgets will
+add a new `budgets` collection (keyed by account first), no migration.
 
 **Definition of done:** can answer "did I overspend on the Food/General bucket
 this month?" at a glance.

@@ -124,13 +124,40 @@ Example:
 
 ---
 
+## Derived rollups (rebuildable caches)
+
+Transactions stay the single source of truth. To avoid reading thousands of
+them on every screen, two aggregates are **maintained on write** (atomic
+`increment`s inside the same batch/transaction as the event) and can be rebuilt
+from scratch at any time — they are caches, not authority.
+
+**`meta/balances`** — one doc, `{ netFlow: { accountId: minorUnits } }`, the net
+per-account flow for the Assets page. Repair: `scripts/recompute_balances.mjs`.
+
+**`rollups/{yearMonth}`** — one doc per month for Stats/trends:
+
+| Field            | Type   | Description                                  |
+| ---------------- | ------ | -------------------------------------------- |
+| yearMonth        | string | `yyyy-mm` (also the doc id; queryable range) |
+| income           | number | Sum of income `baseAmount` (minor units)     |
+| expense          | number | Sum of expense `baseAmount`                  |
+| expenseByCategory| map    | categoryId → minor units (`uncategorized` if null) |
+| incomeByCategory | map    | categoryId → minor units                     |
+
+Transfers are excluded (they move money between accounts, not income/expense).
+An edit that crosses a month boundary decrements the old month and increments
+the new. Repair/backfill: `scripts/recompute_rollups.mjs`. The maintenance lives
+in `transactionRepo`; the pure aggregation math (unit-tested) in `lib/rollup.ts`.
+
+---
+
 ## accounts/{accountId}
 
 Represents an Account defined in `SPEC.md`.
 
 Balances are always derived from Financial Events.
 
-Never store running balances.
+Never store running balances (except the rebuildable rollup cache above).
 
 | Field     | Type    | Description          |
 | --------- | ------- | -------------------- |
