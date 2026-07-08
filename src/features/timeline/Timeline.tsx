@@ -8,6 +8,7 @@ import { MonthSelector } from "../../components/MonthSelector";
 import { StatCell } from "../../components/StatCell";
 import { EntryRow } from "../../components/EntryRow";
 import { LedgerSwitcher } from "../../components/LedgerSwitcher";
+import { Pill } from "../../components/Pill";
 import type { Account, Category, EventType, Ledger, Transaction } from "../../domain/types";
 
 const FILTERS: ("all" | EventType)[] = ["all", "expense", "income", "transfer"];
@@ -114,33 +115,18 @@ export function Timeline({
         <div className="mt-3 flex items-center gap-2 text-xs">
           <div className="flex flex-1 gap-2">
             {FILTERS.map((f) => (
-              <button
-                key={f}
-                type="button"
-                onClick={() => setFilter(f)}
-                className={
-                  "rounded-full px-3 py-1 " +
-                  (filter === f ? "bg-slate-100 text-slate-900" : "bg-slate-800 text-slate-400")
-                }
-              >
+              <Pill key={f} active={filter === f} onClick={() => setFilter(f)}>
                 {f === "all" ? t("all") : t(`type_${f}` as "type_expense")}
-              </button>
+              </Pill>
             ))}
           </div>
-          <button
-            type="button"
+          <Pill
+            active={showFilters || filtersActive}
             onClick={() => setShowFilters((v) => !v)}
-            aria-label={t("search")}
-            aria-pressed={showFilters}
-            className={
-              "rounded-full px-3 py-1 " +
-              (showFilters || filtersActive
-                ? "bg-slate-100 text-slate-900"
-                : "bg-slate-800 text-slate-400")
-            }
+            ariaLabel={t("search")}
           >
             🔍
-          </button>
+          </Pill>
         </div>
 
         {showFilters && (

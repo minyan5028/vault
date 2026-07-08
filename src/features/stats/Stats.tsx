@@ -7,6 +7,8 @@ import { useTransactionsForMonths } from "../../data/useTransactionsForMonths";
 import { sumRollups } from "../../lib/rollup";
 import { UNCATEGORIZED, type Account, type Category, type Transaction } from "../../domain/types";
 import { EntryRow } from "../../components/EntryRow";
+import { Pill } from "../../components/Pill";
+import { StatCell } from "../../components/StatCell";
 import { TrendChart, type TrendPoint } from "./TrendChart";
 import { CategoryDonut } from "./CategoryDonut";
 import { SLICE_COLORS, OTHER_COLOR, type Slice } from "./donutPalette";
@@ -168,17 +170,9 @@ export function Stats({
           <span className="text-lg font-semibold tracking-tight">{t("stats")}</span>
           <div className="flex gap-1 text-xs">
             {(["month", "year"] as Period[]).map((p) => (
-              <button
-                key={p}
-                type="button"
-                onClick={() => setPeriod(p)}
-                className={
-                  "rounded-full px-3 py-1 " +
-                  (period === p ? "bg-slate-100 text-slate-900" : "bg-slate-800 text-slate-400")
-                }
-              >
+              <Pill key={p} active={period === p} onClick={() => setPeriod(p)}>
                 {t(p === "month" ? "periodMonth" : "periodYear")}
-              </button>
+              </Pill>
             ))}
           </div>
         </header>
@@ -199,7 +193,6 @@ export function Stats({
           <ModeStat
             label={t("income")}
             minor={agg.income}
-            locale={locale}
             active={mode === "income"}
             colorClass="text-sky-400"
             accent="#38bdf8"
@@ -208,29 +201,20 @@ export function Stats({
           <ModeStat
             label={t("expense")}
             minor={agg.expense}
-            locale={locale}
             active={mode === "expense"}
             colorClass="text-rose-400"
             accent="#fb7185"
             onClick={() => setMode("expense")}
           />
-          <Stat label={t("net")} minor={agg.income - agg.expense} locale={locale} />
+          <StatCell label={t("net")} minor={agg.income - agg.expense} />
         </div>
 
         {/* view sub-tabs */}
         <div className="mt-3 flex gap-2 text-xs">
           {(["category", "trend", "content"] as View[]).map((v) => (
-            <button
-              key={v}
-              type="button"
-              onClick={() => setView(v)}
-              className={
-                "rounded-full px-3 py-1 " +
-                (view === v ? "bg-slate-100 text-slate-900" : "bg-slate-800 text-slate-400")
-              }
-            >
+            <Pill key={v} active={view === v} onClick={() => setView(v)}>
               {t(v === "category" ? "byCategory" : v === "trend" ? "trend" : "byContent")}
-            </button>
+            </Pill>
           ))}
         </div>
 
@@ -311,27 +295,6 @@ export function Stats({
   );
 }
 
-function Stat({
-  label,
-  minor,
-  locale,
-  className = "",
-}: {
-  label: string;
-  minor: number;
-  locale: string;
-  className?: string;
-}) {
-  return (
-    <div>
-      <p className="text-xs text-slate-500">{label}</p>
-      <p className={"mt-0.5 text-base font-semibold tabular-nums " + className}>
-        {formatMoney(minor, BASE_CURRENCY, locale)}
-      </p>
-    </div>
-  );
-}
-
 /** The transactions behind a tapped category or title, for the selected period.
  *  Reuses the Timeline's row (tap to edit, swipe to delete). */
 function DrillView({
@@ -397,7 +360,6 @@ function DrillView({
 function ModeStat({
   label,
   minor,
-  locale,
   active,
   colorClass,
   accent,
@@ -405,7 +367,6 @@ function ModeStat({
 }: {
   label: string;
   minor: number;
-  locale: string;
   active: boolean;
   colorClass: string;
   accent: string;
@@ -416,17 +377,10 @@ function ModeStat({
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className="flex flex-col items-center pb-1"
+      className="w-full pb-1"
       style={{ borderBottom: `2px solid ${active ? accent : "transparent"}` }}
     >
-      <span className="text-xs text-slate-500">{label}</span>
-      <span
-        className={
-          "mt-0.5 text-base font-semibold tabular-nums " + (active ? colorClass : "text-slate-500")
-        }
-      >
-        {formatMoney(minor, BASE_CURRENCY, locale)}
-      </span>
+      <StatCell label={label} minor={minor} className={active ? colorClass : "text-slate-500"} />
     </button>
   );
 }
