@@ -13,6 +13,7 @@ const BASE_CURRENCY = "TWD";
 
 type Period = "month" | "year";
 type View = "category" | "trend" | "content";
+type Mode = "expense" | "income";
 
 /**
  * Spending analytics, read from the per-month rollups (a handful of small docs,
@@ -26,6 +27,9 @@ export function Stats({ ledgerId, categories }: { ledgerId: string; categories: 
   const locale = i18n.language;
   const [period, setPeriod] = useState<Period>("month");
   const [view, setView] = useState<View>("category");
+  // Income vs expense drives the category donut and the by-title list (each is
+  // one total broken apart); the trend chart always shows both.
+  const [mode, setMode] = useState<Mode>("expense");
   const [anchor, setAnchor] = useState<string>(() => yearMonthOf(new Date()));
 
   // The visible 12-month window, the months that make up the selected period
@@ -61,13 +65,15 @@ export function Stats({ ledgerId, categories }: { ledgerId: string; categories: 
     [rollups, inPeriod],
   );
 
+  const modeTotal = mode === "expense" ? agg.expense : agg.income;
+  const catMap = mode === "expense" ? agg.expenseByCategory : agg.incomeByCategory;
   const rows = useMemo(
     () =>
-      Object.entries(agg.expenseByCategory)
+      Object.entries(catMap)
         .filter(([, v]) => v > 0)
         .map(([id, amount]) => ({ id, amount }))
         .sort((a, b) => b.amount - a.amount),
-    [agg],
+    [catMap],
   );
 
   // Donut slices: the top 6 categories keep distinct colors; the rest fold into
@@ -93,7 +99,7 @@ export function Stats({ ledgerId, categories }: { ledgerId: string; categories: 
   const contentRows = useMemo(() => {
     const m = new Map<string, { total: number; count: number }>();
     for (const tx of contentTx) {
-      if (tx.type !== "expense") continue;
+      if (tx.type !== mode) continue;
       const key = tx.title.trim() || "—";
       const cur = m.get(key) ?? { total: 0, count: 0 };
       cur.total += tx.baseAmount;
@@ -103,7 +109,7 @@ export function Stats({ ledgerId, categories }: { ledgerId: string; categories: 
     return [...m.entries()]
       .map(([title, v]) => ({ title, ...v }))
       .sort((a, b) => b.total - a.total);
-  }, [contentTx]);
+  }, [contentTx, mode]);
 
   const shift = (d: number) => setAnchor((a) => shiftMonth(a, period === "year" ? d * 12 : d));
   const heading = period === "year" ? anchor.slice(0, 4) : monthLabel(anchor, locale);
@@ -145,10 +151,26 @@ export function Stats({ ledgerId, categories }: { ledgerId: string; categories: 
           </button>
         </div>
 
-        {/* income / expense / net for the selected period */}
+        {/* income / expense (tap to drive the breakdown) / net */}
         <div className="mt-1 grid grid-cols-3 gap-2 border-y border-slate-800 py-3 text-center">
-          <Stat label={t("income")} minor={agg.income} locale={locale} className="text-sky-400" />
-          <Stat label={t("expense")} minor={agg.expense} locale={locale} className="text-rose-400" />
+          <ModeStat
+            label={t("income")}
+            minor={agg.income}
+            locale={locale}
+            active={mode === "income"}
+            colorClass="text-sky-400"
+            accent="#38bdf8"
+            onClick={() => setMode("income")}
+          />
+          <ModeStat
+            label={t("expense")}
+            minor={agg.expense}
+            locale={locale}
+            active={mode === "expense"}
+            colorClass="text-rose-400"
+            accent="#fb7185"
+            onClick={() => setMode("expense")}
+          />
           <Stat label={t("net")} minor={agg.income - agg.expense} locale={locale} />
         </div>
 
@@ -187,18 +209,18 @@ export function Stats({ ledgerId, categories }: { ledgerId: string; categories: 
               ))}
             </ul>
           )
-        ) : agg.expense === 0 ? (
+        ) : modeTotal === 0 ? (
           <p className="mt-16 text-center text-sm text-slate-600">{t("empty")}</p>
         ) : (
           <>
             <div className="mt-4">
-              <CategoryDonut slices={donut} total={agg.expense} locale={locale} />
+              <CategoryDonut slices={donut} total={modeTotal} locale={locale} />
             </div>
             <ul className="mt-4 space-y-3">
               {rows.map((r, i) => {
                 const cat =
                   r.id === UNCATEGORIZED ? undefined : categories.find((c) => c.id === r.id);
-                const pct = Math.round((r.amount / agg.expense) * 100);
+                const pct = Math.round((r.amount / modeTotal) * 100);
                 const color = i < 6 ? SLICE_COLORS[i] : OTHER_COLOR;
                 return (
                   <li key={r.id}>
@@ -248,5 +270,44 @@ function Stat({
         {formatMoney(minor, BASE_CURRENCY, locale)}
       </p>
     </div>
+  );
+}
+
+/** An income/expense total that doubles as the breakdown selector. The active
+ *  one carries its semantic color + an underline; the other dims. */
+function ModeStat({
+  label,
+  minor,
+  locale,
+  active,
+  colorClass,
+  accent,
+  onClick,
+}: {
+  label: string;
+  minor: number;
+  locale: string;
+  active: boolean;
+  colorClass: string;
+  accent: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className="flex flex-col items-center pb-1"
+      style={{ borderBottom: `2px solid ${active ? accent : "transparent"}` }}
+    >
+      <span className="text-xs text-slate-500">{label}</span>
+      <span
+        className={
+          "mt-0.5 text-base font-semibold tabular-nums " + (active ? colorClass : "text-slate-500")
+        }
+      >
+        {formatMoney(minor, BASE_CURRENCY, locale)}
+      </span>
+    </button>
   );
 }
