@@ -122,12 +122,13 @@ ledger and see each other's entries live, while personal ledgers stay private.
 
 | Deliverable | Size | Status |
 |-------------|------|--------|
-| Monthly summary by category (sum `baseAmount`) | M | ✅ (Stats, from rollups) |
+| Monthly summary by category (sum `baseAmount`) | M | ✅ (Stats, from rollups; income/expense toggle) |
 | Spending trend over time (month-over-month) | M | ✅ (trend line chart) |
-| Charts — category breakdown + trend (follow dataviz conventions) | M | ⚠️ trend line done; category still bars (pie TBD) |
+| Charts — category breakdown + trend (follow dataviz conventions) | M | ✅ (donut + trend, validated palette) |
+| By-title breakdown + drill-down into a category/title's transactions | M | ✅ (tap a row → its transactions → edit/delete) |
 | **Budgets per account-bucket first** (envelope style), category budgets later | L | ⬜ (deferred — not a current pain; adds `budgets` collection, no migration) |
 | Budget progress + overspend indicators | M | ⬜ |
-| Filters & search (category, account, date range, title text) | M | ⬜ (partly covered by Stats; content-by-title view still TODO) |
+| Filters & search (category, account, date range, title text) | M | ⬜ (Timeline search box + filters still TODO) |
 | Data export (CSV / JSON) — delivers "own your data" for real | S | ✅ (Backup: JSON + CSV export/import) |
 
 **Data model impact:** monthly **rollup docs** shipped
