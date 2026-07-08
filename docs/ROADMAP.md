@@ -93,12 +93,11 @@ permissions.
 | Multiple ledgers per user + ledger switcher (Personal / Couple's) | M | ✅ |
 | Invite & join a ledger (invitation flow) | L | ✅ (Gmail invite / accept) |
 | Roles: owner / member; security rules for multi-member read/write | L | ✅ (`firestore.rules`) |
-| Per-transaction `createdBy` attribution shown in UI | S | ⬜ (`createdBy` is stored, not yet displayed) |
+| Per-transaction `createdBy` attribution shown in UI | S | ✅ (shown in shared ledgers via `memberProfiles`) |
 | Real-time sync UX (two people editing) | M | ✅ (live via `onSnapshot`) |
 
-**Phase 2 is functionally complete** — sharing works end-to-end. Only remaining
-item is showing `createdBy` attribution in the transaction UI (data is already
-captured).
+**Phase 2 is complete** — sharing works end-to-end, and shared-ledger entries
+show who created them.
 
 **Data model impact:** `members` map already exists; add roles + an
 `invitations` collection. No restructuring — this is why data lives under a

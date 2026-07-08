@@ -19,6 +19,7 @@ const BASE_CURRENCY = "TWD";
  */
 export function Timeline({
   ledgerId,
+  currentUid,
   accounts,
   categories,
   ledgers,
@@ -30,6 +31,7 @@ export function Timeline({
   onDelete,
 }: {
   ledgerId: string;
+  currentUid: string;
   accounts: Account[];
   categories: Category[];
   ledgers: Ledger[];
@@ -45,6 +47,15 @@ export function Timeline({
   const [month, setMonth] = useState<string>(() => yearMonthOf(new Date()));
   const [filter, setFilter] = useState<"all" | EventType>("all");
   const txns = useMonthTransactions(ledgerId, month);
+
+  // Attribution: only meaningful in a shared ledger, and shown for others' entries.
+  const activeLedger = ledgers.find((l) => l.id === ledgerId);
+  const shared = (activeLedger?.memberIds.length ?? 0) > 1;
+  const authorNameFor = (uid: string): string | undefined => {
+    if (!shared || uid === currentUid) return undefined;
+    const p = activeLedger?.memberProfiles[uid];
+    return p?.name || p?.email || undefined;
+  };
 
   const summary = useMemo(() => totals(txns), [txns]);
   const filtered = useMemo(
@@ -119,6 +130,7 @@ export function Timeline({
                       categories={categories}
                       onEdit={onEdit}
                       onDelete={onDelete}
+                      authorName={authorNameFor(e.createdBy)}
                     />
                   ))}
                 </ul>

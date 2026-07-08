@@ -37,6 +37,9 @@ export async function provisionPersonalLedger(user: User): Promise<string> {
       members: { [user.uid]: "owner" },
       memberIds: [user.uid],
       invitedEmails: [],
+      memberProfiles: {
+        [user.uid]: { name: user.displayName ?? "", email: user.email ?? "" },
+      },
       createdBy: user.uid,
       createdAt: serverTimestamp(),
     });

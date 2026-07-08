@@ -5,6 +5,13 @@
 
 export type LedgerRole = "owner" | "member";
 
+/** A member's display info, stored on the Ledger so other members can attribute
+ *  entries without reading each other's private `users/{uid}` docs. */
+export interface MemberProfile {
+  name: string;
+  email: string;
+}
+
 export interface Ledger {
   id: string;
   name: string;
@@ -14,6 +21,8 @@ export interface Ledger {
   memberIds: string[];
   /** lowercased emails invited but not yet joined (see sharing). */
   invitedEmails: string[];
+  /** uid → display name/email; each member self-registers their own entry. */
+  memberProfiles: Record<string, MemberProfile>;
   createdBy: string;
   createdAt: Date;
 }

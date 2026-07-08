@@ -19,7 +19,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { seedLedgerCatalog } from "./seedCatalog";
-import type { Ledger } from "../domain/types";
+import type { Ledger, MemberProfile } from "../domain/types";
 
 const ledgersCol = () => collection(db, "ledgers");
 const ledgerDoc = (id: string) => doc(db, "ledgers", id);
@@ -34,6 +34,7 @@ function toLedger(s: QueryDocumentSnapshot<DocumentData>): Ledger {
     members: d.members ?? {},
     memberIds: d.memberIds ?? [],
     invitedEmails: d.invitedEmails ?? [],
+    memberProfiles: d.memberProfiles ?? {},
     createdBy: d.createdBy,
     createdAt: d.createdAt?.toDate?.() ?? new Date(),
   };
@@ -61,18 +62,31 @@ export const ledgerRepo = {
   },
 
   /** Create a new ledger owned by the user; returns its id. */
-  async create(uid: string, name: string, baseCurrency = "TWD"): Promise<string> {
+  async create(
+    uid: string,
+    name: string,
+    baseCurrency = "TWD",
+    profile?: MemberProfile,
+  ): Promise<string> {
     const ref = await addDoc(ledgersCol(), {
       name: name.trim() || "Ledger",
       baseCurrency,
       members: { [uid]: "owner" },
       memberIds: [uid],
       invitedEmails: [],
+      memberProfiles: profile ? { [uid]: profile } : {},
       createdBy: uid,
       createdAt: serverTimestamp(),
     });
     await seedLedgerCatalog(ref.id);
     return ref.id;
+  },
+
+  /** Register (or refresh) my own display info on a ledger I'm a member of, so
+   *  other members can attribute my entries. Members may update their ledger,
+   *  so no security-rules change is needed. */
+  setMemberProfile(ledgerId: string, uid: string, profile: MemberProfile) {
+    return updateDoc(ledgerDoc(ledgerId), { [`memberProfiles.${uid}`]: profile });
   },
 
   /** Invite someone by email (adds to the ledger's pending invites). */

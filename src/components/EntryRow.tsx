@@ -15,6 +15,7 @@ export function EntryRow({
   onEdit,
   onDelete,
   runningBalance,
+  authorName,
 }: {
   tx: Transaction;
   locale: string;
@@ -23,6 +24,8 @@ export function EntryRow({
   onEdit: (tx: Transaction) => void;
   onDelete: (tx: Transaction) => void;
   runningBalance?: number;
+  /** In shared ledgers, the member who created this entry (omitted for one's own). */
+  authorName?: string;
 }) {
   const { t } = useTranslation();
   const category = categories.find((c) => c.id === tx.categoryId);
@@ -86,7 +89,10 @@ export function EntryRow({
         <span className="text-xl">{tx.type === "transfer" ? "↔️" : category?.icon}</span>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm text-slate-200">{label}</p>
-          <p className="text-xs text-slate-500">{account?.name}</p>
+          <p className="truncate text-xs text-slate-500">
+            {account?.name}
+            {authorName && <span className="text-slate-600"> · {authorName}</span>}
+          </p>
         </div>
         <div className="text-right">
           <span className={"text-sm tabular-nums " + amountColor}>

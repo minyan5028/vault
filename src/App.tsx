@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { User } from "firebase/auth";
 import type { Account, Ledger, Transaction } from "./domain/types";
@@ -50,6 +50,10 @@ function AuthedApp({ user }: { user: User }) {
   const ledgers = [...subscribed, ...pending.filter((p) => !subscribed.some((l) => l.id === p.id))];
   const activeLedger = ledgers.find((l) => l.id === ledgerId);
   const { accounts, categories } = useLedgerData(ready ? ledgerId : "");
+  const myProfile = useMemo(
+    () => ({ name: user.displayName ?? "", email: user.email ?? "" }),
+    [user.displayName, user.email],
+  );
 
   useEffect(() => {
     setPending((p) => p.filter((pl) => !subscribed.some((l) => l.id === pl.id)));
@@ -83,6 +87,17 @@ function AuthedApp({ user }: { user: User }) {
     void materializeRecurring(ledgerId, user.uid).catch(console.error);
   }, [ready, ledgerId, user.uid]);
 
+  // Self-register my display info on every ledger I belong to (once, when it's
+  // missing or my name/email changed) so other members can attribute my entries.
+  useEffect(() => {
+    if (!ready) return;
+    for (const l of subscribed) {
+      const cur = l.memberProfiles[user.uid];
+      if (cur && cur.name === myProfile.name && cur.email === myProfile.email) continue;
+      void ledgerRepo.setMemberProfile(l.id, user.uid, myProfile).catch(console.error);
+    }
+  }, [ready, subscribed, user.uid, myProfile]);
+
   useEffect(() => {
     if (!undoId) return;
     const timer = setTimeout(() => setUndoId(null), 5000);
@@ -97,7 +112,7 @@ function AuthedApp({ user }: { user: User }) {
   };
 
   const createLedger = (name: string) => {
-    void ledgerRepo.create(user.uid, name).then((id) => {
+    void ledgerRepo.create(user.uid, name, "TWD", myProfile).then((id) => {
       setPending((p) => [
         ...p,
         {
@@ -107,6 +122,7 @@ function AuthedApp({ user }: { user: User }) {
           members: { [user.uid]: "owner" },
           memberIds: [user.uid],
           invitedEmails: [],
+          memberProfiles: { [user.uid]: myProfile },
           createdBy: user.uid,
           createdAt: new Date(),
         },
@@ -129,6 +145,7 @@ function AuthedApp({ user }: { user: User }) {
       {tab === "timeline" && (
         <Timeline
           ledgerId={ledgerId}
+          currentUid={user.uid}
           accounts={accounts}
           categories={categories}
           ledgers={ledgers}

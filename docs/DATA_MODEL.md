@@ -97,21 +97,27 @@ Future user preferences (theme, language, etc.) should be stored separately rath
 
 Represents an independent financial context.
 
-| Field        | Type      | Description      |
-| ------------ | --------- | ---------------- |
-| name         | string    | Ledger name      |
-| baseCurrency | string    | ISO 4217         |
-| members      | map       | userId → role    |
-| createdBy    | string    | Owner            |
-| createdAt    | timestamp | Server timestamp |
+| Field          | Type      | Description                                         |
+| -------------- | --------- | --------------------------------------------------- |
+| name           | string    | Ledger name                                         |
+| baseCurrency   | string    | ISO 4217                                            |
+| members        | map       | userId → role (`owner` / `member`)                  |
+| memberIds      | array     | Queryable mirror of `members` keys (array-contains) |
+| invitedEmails  | array     | Lowercased emails invited but not yet joined        |
+| memberProfiles | map       | userId → `{ name, email }`; each member self-registers their own, so others can attribute entries without reading private `users/{uid}` docs |
+| createdBy      | string    | Owner                                               |
+| createdAt      | timestamp | Server timestamp                                    |
 
 Example:
 
 ```json
 {
-  "members": {
-    "uid123": "owner",
-    "uid456": "member"
+  "members": { "uid123": "owner", "uid456": "member" },
+  "memberIds": ["uid123", "uid456"],
+  "invitedEmails": [],
+  "memberProfiles": {
+    "uid123": { "name": "Alice", "email": "alice@example.com" },
+    "uid456": { "name": "Bob", "email": "bob@example.com" }
   }
 }
 ```
