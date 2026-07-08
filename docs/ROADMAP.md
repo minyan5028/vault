@@ -116,9 +116,12 @@ ledger and see each other's entries live, while personal ledgers stay private.
 
 ---
 
-## Phase 3 — Analytics, Budgeting & Reporting 🔜
+## Phase 3 — Analytics, Budgeting & Reporting ✅ (2 items deferred)
 
-**Goal:** understand spending and stay on budget. **← in progress.**
+**Goal:** understand spending and stay on budget. Shipped: rollups, category
+donut + monthly trend (income/expense toggle), by-title breakdown, drill-down to
+edit, CSV/JSON export, and a current-month Timeline filter bar. **Deferred:**
+cross-history global search and budgets (see "Remaining work (parked)" below).
 
 | Deliverable | Size | Status |
 |-------------|------|--------|
