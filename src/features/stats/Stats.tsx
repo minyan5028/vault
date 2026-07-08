@@ -8,7 +8,8 @@ import { sumRollups } from "../../lib/rollup";
 import { UNCATEGORIZED, type Account, type Category, type Transaction } from "../../domain/types";
 import { EntryRow } from "../../components/EntryRow";
 import { TrendChart, type TrendPoint } from "./TrendChart";
-import { CategoryDonut, SLICE_COLORS, OTHER_COLOR, type Slice } from "./CategoryDonut";
+import { CategoryDonut } from "./CategoryDonut";
+import { SLICE_COLORS, OTHER_COLOR, type Slice } from "./donutPalette";
 
 const BASE_CURRENCY = "TWD";
 

@@ -47,7 +47,10 @@ function AuthedApp({ user }: { user: User }) {
   const [pending, setPending] = useState<Ledger[]>([]);
   const subscribed = useUserLedgers(user.uid);
   const invites = useMyInvites(user.email);
-  const ledgers = [...subscribed, ...pending.filter((p) => !subscribed.some((l) => l.id === p.id))];
+  const ledgers = useMemo(
+    () => [...subscribed, ...pending.filter((p) => !subscribed.some((l) => l.id === p.id))],
+    [subscribed, pending],
+  );
   const activeLedger = ledgers.find((l) => l.id === ledgerId);
   const { accounts, categories } = useLedgerData(ready ? ledgerId : "");
   const myProfile = useMemo(

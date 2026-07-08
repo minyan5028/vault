@@ -28,7 +28,7 @@ export async function provisionPersonalLedger(user: User): Promise<string> {
   try {
     exists = (await getDoc(ledgerRef)).exists();
   } catch {
-    exists = false;
+    // read denied under the membership rules → doesn't exist yet
   }
   if (!exists) {
     await setDoc(ledgerRef, {

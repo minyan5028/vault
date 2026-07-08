@@ -1,18 +1,8 @@
 import { formatMoney } from "../../lib/money";
+import type { Slice } from "./donutPalette";
 
 const BASE_CURRENCY = "TWD";
 const SURFACE = "#0f172a"; // slate-900 — the gap color between slices
-
-export interface Slice {
-  label: string;
-  value: number;
-  color: string;
-}
-
-// Validated categorical palette (dark, CVD-ordered) for the top categories,
-// plus a neutral gray for the aggregated "Other" slice. See dataviz skill.
-export const SLICE_COLORS = ["#3987e5", "#199e70", "#c98500", "#008300", "#9085e9", "#e66767"];
-export const OTHER_COLOR = "#64748b"; // slate-500
 
 const CX = 80;
 const CY = 80;
