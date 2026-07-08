@@ -51,6 +51,23 @@ export function addContribution(
   acc.set(yearMonth, cur);
 }
 
+/** Sum several months' rollups into one aggregate (e.g. a whole year). */
+export function sumRollups(rollups: MonthlyRollup[]): Omit<MonthlyRollup, "yearMonth"> {
+  const out = { income: 0, expense: 0, expenseByCategory: {}, incomeByCategory: {} } as Omit<
+    MonthlyRollup,
+    "yearMonth"
+  >;
+  for (const r of rollups) {
+    out.income += r.income;
+    out.expense += r.expense;
+    for (const [k, v] of Object.entries(r.expenseByCategory))
+      out.expenseByCategory[k] = (out.expenseByCategory[k] ?? 0) + v;
+    for (const [k, v] of Object.entries(r.incomeByCategory))
+      out.incomeByCategory[k] = (out.incomeByCategory[k] ?? 0) + v;
+  }
+  return out;
+}
+
 /** Absolute rollups for a set of transactions, keyed by yearMonth. Used by the
  *  backfill to rebuild docs from scratch (deleted transactions excluded). */
 export function rollupsFrom(
