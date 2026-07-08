@@ -23,18 +23,17 @@ export interface TrendPoint {
  * Monthly income/expense trend (change-over-time → line). Two series on one
  * axis (same unit, TWD); expense rose, income sky, matching the app's
  * semantics. The selected month is emphasized and directly labelled; tapping a
- * month selects it. Legend + labels give identity beyond color (accessibility).
+ * month is emphasized and directly labelled. Legend + labels give identity
+ * beyond color (accessibility). Read-only — navigate months with the header.
  */
 export function TrendChart({
   points,
   selected,
   locale,
-  onSelect,
 }: {
   points: TrendPoint[];
   selected: string;
   locale: string;
-  onSelect: (ym: string) => void;
 }) {
   const { t } = useTranslation();
   const n = points.length;
@@ -106,16 +105,6 @@ export function TrendChart({
               >
                 {monthNum(p.ym)}
               </text>
-              {/* generous invisible hit target for tap-to-select */}
-              <rect
-                x={x(i) - 14}
-                y={0}
-                width={28}
-                height={BOT}
-                fill="transparent"
-                onClick={() => onSelect(p.ym)}
-                style={{ cursor: "pointer" }}
-              />
             </g>
           );
         })}

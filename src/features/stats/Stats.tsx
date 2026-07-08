@@ -146,10 +146,6 @@ export function Stats({
 
   const shift = (d: number) => setAnchor((a) => shiftMonth(a, period === "year" ? d * 12 : d));
   const heading = period === "year" ? anchor.slice(0, 4) : monthLabel(anchor, locale);
-  const selectTrendMonth = (ym: string) => {
-    if (period === "year") setPeriod("month");
-    setAnchor(ym);
-  };
 
   return (
     <main className="min-h-dvh bg-slate-900 text-slate-100">
@@ -238,7 +234,7 @@ export function Stats({
         </div>
 
         {view === "trend" ? (
-          <TrendChart points={trend} selected={anchor} locale={locale} onSelect={selectTrendMonth} />
+          <TrendChart points={trend} selected={anchor} locale={locale} />
         ) : view === "content" ? (
           contentRows.length === 0 ? (
             <p className="mt-16 text-center text-sm text-slate-600">{t("empty")}</p>
