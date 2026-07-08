@@ -3,20 +3,23 @@ import { useTranslation } from "react-i18next";
 import { formatMoney } from "../../lib/money";
 import { yearMonthOf, shiftMonth, monthLabel } from "../../lib/date";
 import { useRollups } from "../../data/useRollups";
+import { useTransactionsForMonths } from "../../data/useTransactionsForMonths";
 import { sumRollups } from "../../lib/rollup";
 import { UNCATEGORIZED, type Category } from "../../domain/types";
 import { TrendChart, type TrendPoint } from "./TrendChart";
+import { CategoryDonut, SLICE_COLORS, OTHER_COLOR, type Slice } from "./CategoryDonut";
 
 const BASE_CURRENCY = "TWD";
 
 type Period = "month" | "year";
-type View = "category" | "trend";
+type View = "category" | "trend" | "content";
 
 /**
  * Spending analytics, read from the per-month rollups (a handful of small docs,
- * not every transaction — see MonthlyRollup). A 12-month window feeds both the
- * category breakdown for the selected period (a month, or a whole year) and the
- * trend chart.
+ * not every transaction — see MonthlyRollup). A 12-month window feeds the
+ * category breakdown and the trend chart for the selected period (a month, or a
+ * whole year). The by-title view fetches that period's raw transactions
+ * on-demand, since titles aren't in the rollups.
  */
 export function Stats({ ledgerId, categories }: { ledgerId: string; categories: Category[] }) {
   const { t, i18n } = useTranslation();
@@ -25,9 +28,10 @@ export function Stats({ ledgerId, categories }: { ledgerId: string; categories: 
   const [view, setView] = useState<View>("category");
   const [anchor, setAnchor] = useState<string>(() => yearMonthOf(new Date()));
 
-  // The visible 12-month window, and which of its months make up the selected
-  // period (just the anchor month, or all twelve of the anchor's year).
-  const { windowStart, windowEnd, months, inPeriod } = useMemo(() => {
+  // The visible 12-month window, the months that make up the selected period
+  // (just the anchor month, or all twelve of the anchor's year), and a period
+  // membership test.
+  const { windowStart, windowEnd, months, periodMonths, inPeriod } = useMemo(() => {
     const year = anchor.slice(0, 4);
     if (period === "year") {
       const ms = Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, "0")}`);
@@ -35,6 +39,7 @@ export function Stats({ ledgerId, categories }: { ledgerId: string; categories: 
         windowStart: ms[0],
         windowEnd: ms[11],
         months: ms,
+        periodMonths: ms,
         inPeriod: (ym: string) => ym.slice(0, 4) === year,
       };
     }
@@ -44,6 +49,7 @@ export function Stats({ ledgerId, categories }: { ledgerId: string; categories: 
       windowStart: start,
       windowEnd: anchor,
       months: ms,
+      periodMonths: [anchor],
       inPeriod: (ym: string) => ym === anchor,
     };
   }, [anchor, period]);
@@ -64,6 +70,14 @@ export function Stats({ ledgerId, categories }: { ledgerId: string; categories: 
     [agg],
   );
 
+  // Donut slices: the top 6 categories keep distinct colors; the rest fold into
+  // one neutral "Other" slice (dataviz: never cycle a categorical palette).
+  const donut: Slice[] = useMemo(() => {
+    const top = rows.slice(0, 6).map((r, i) => ({ label: r.id, value: r.amount, color: SLICE_COLORS[i] }));
+    const rest = rows.slice(6).reduce((s, r) => s + r.amount, 0);
+    return rest > 0 ? [...top, { label: UNCATEGORIZED, value: rest, color: OTHER_COLOR }] : top;
+  }, [rows]);
+
   const trend: TrendPoint[] = useMemo(
     () =>
       months.map((ym) => ({
@@ -73,6 +87,23 @@ export function Stats({ ledgerId, categories }: { ledgerId: string; categories: 
       })),
     [months, byMonth],
   );
+
+  // By-title breakdown — raw transactions for the period, only when its tab is open.
+  const contentTx = useTransactionsForMonths(ledgerId, view === "content" ? periodMonths : []);
+  const contentRows = useMemo(() => {
+    const m = new Map<string, { total: number; count: number }>();
+    for (const tx of contentTx) {
+      if (tx.type !== "expense") continue;
+      const key = tx.title.trim() || "—";
+      const cur = m.get(key) ?? { total: 0, count: 0 };
+      cur.total += tx.baseAmount;
+      cur.count += 1;
+      m.set(key, cur);
+    }
+    return [...m.entries()]
+      .map(([title, v]) => ({ title, ...v }))
+      .sort((a, b) => b.total - a.total);
+  }, [contentTx]);
 
   const shift = (d: number) => setAnchor((a) => shiftMonth(a, period === "year" ? d * 12 : d));
   const heading = period === "year" ? anchor.slice(0, 4) : monthLabel(anchor, locale);
@@ -121,9 +152,9 @@ export function Stats({ ledgerId, categories }: { ledgerId: string; categories: 
           <Stat label={t("net")} minor={agg.income - agg.expense} locale={locale} />
         </div>
 
-        {/* view sub-tabs: category / trend */}
+        {/* view sub-tabs */}
         <div className="mt-3 flex gap-2 text-xs">
-          {(["category", "trend"] as View[]).map((v) => (
+          {(["category", "trend", "content"] as View[]).map((v) => (
             <button
               key={v}
               type="button"
@@ -133,42 +164,66 @@ export function Stats({ ledgerId, categories }: { ledgerId: string; categories: 
                 (view === v ? "bg-slate-100 text-slate-900" : "bg-slate-800 text-slate-400")
               }
             >
-              {t(v === "category" ? "byCategory" : "trend")}
+              {t(v === "category" ? "byCategory" : v === "trend" ? "trend" : "byContent")}
             </button>
           ))}
         </div>
 
         {view === "trend" ? (
           <TrendChart points={trend} selected={anchor} locale={locale} onSelect={selectTrendMonth} />
+        ) : view === "content" ? (
+          contentRows.length === 0 ? (
+            <p className="mt-16 text-center text-sm text-slate-600">{t("empty")}</p>
+          ) : (
+            <ul className="mt-4 divide-y divide-slate-800">
+              {contentRows.map((r) => (
+                <li key={r.title} className="flex items-center gap-2 py-2 text-sm">
+                  <span className="flex-1 truncate text-slate-200">{r.title}</span>
+                  <span className="tabular-nums text-slate-500">{r.count}</span>
+                  <span className="w-24 text-right tabular-nums text-slate-200">
+                    {formatMoney(r.total, BASE_CURRENCY, locale)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )
         ) : agg.expense === 0 ? (
           <p className="mt-16 text-center text-sm text-slate-600">{t("empty")}</p>
         ) : (
-          <ul className="mt-4 space-y-3">
-            {rows.map((r) => {
-              const cat = r.id === UNCATEGORIZED ? undefined : categories.find((c) => c.id === r.id);
-              const pct = Math.round((r.amount / agg.expense) * 100);
-              return (
-                <li key={r.id}>
-                  <div className="mb-1 flex items-center gap-2 text-sm">
-                    <span className="text-base">{cat?.icon ?? "•"}</span>
-                    <span className="flex-1 truncate text-slate-200">
-                      {cat?.name ?? t("uncategorized")}
-                    </span>
-                    <span className="tabular-nums text-slate-400">{pct}%</span>
-                    <span className="w-24 text-right tabular-nums text-slate-200">
-                      {formatMoney(r.amount, BASE_CURRENCY, locale)}
-                    </span>
-                  </div>
-                  <div className="h-1.5 overflow-hidden rounded-full bg-slate-800">
-                    <div
-                      className="h-full rounded-full bg-rose-500/70"
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
+          <>
+            <div className="mt-4">
+              <CategoryDonut slices={donut} total={agg.expense} locale={locale} />
+            </div>
+            <ul className="mt-4 space-y-3">
+              {rows.map((r, i) => {
+                const cat =
+                  r.id === UNCATEGORIZED ? undefined : categories.find((c) => c.id === r.id);
+                const pct = Math.round((r.amount / agg.expense) * 100);
+                const color = i < 6 ? SLICE_COLORS[i] : OTHER_COLOR;
+                return (
+                  <li key={r.id}>
+                    <div className="mb-1 flex items-center gap-2 text-sm">
+                      <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: color }} />
+                      <span className="text-base">{cat?.icon ?? "•"}</span>
+                      <span className="flex-1 truncate text-slate-200">
+                        {cat?.name ?? t("uncategorized")}
+                      </span>
+                      <span className="tabular-nums text-slate-400">{pct}%</span>
+                      <span className="w-24 text-right tabular-nums text-slate-200">
+                        {formatMoney(r.amount, BASE_CURRENCY, locale)}
+                      </span>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-slate-800">
+                      <div
+                        className="h-full rounded-full"
+                        style={{ width: `${pct}%`, background: color }}
+                      />
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </>
         )}
       </div>
     </main>
