@@ -4,6 +4,9 @@
 # Raw export archives (the extracted CSV + migrated JSON are kept)
 *.zip
 
+# Reference screenshots (kept locally for design reference, not versioned)
+docs/References/
+
 # Node / build (for the app scaffold to come)
 node_modules/
 dist/

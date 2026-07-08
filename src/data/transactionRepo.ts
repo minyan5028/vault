@@ -27,7 +27,8 @@ import {
 } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { yearMonthOf } from "../lib/date";
-import type { EventType, Transaction } from "../domain/types";
+import { addContribution, monthContribution, type RollupContribution } from "../lib/rollup";
+import type { EventType, MonthlyRollup, Transaction } from "../domain/types";
 
 export interface NewTransactionInput {
   type: EventType;
@@ -58,6 +59,8 @@ export interface TitleSuggestion {
 
 const transactionsCol = (ledgerId: string) => collection(db, "ledgers", ledgerId, "transactions");
 const rollupRef = (ledgerId: string) => doc(db, "ledgers", ledgerId, "meta", "balances");
+const rollupsCol = (ledgerId: string) => collection(db, "ledgers", ledgerId, "rollups");
+const monthRollupRef = (ledgerId: string, ym: string) => doc(rollupsCol(ledgerId), ym);
 
 const cmpDesc = (a: Transaction, b: Transaction) =>
   b.date.getTime() - a.date.getTime() || b.createdAt.getTime() - a.createdAt.getTime();
@@ -85,6 +88,35 @@ function rollupDelta(deltas: Record<string, number>) {
   const netFlow: Record<string, unknown> = {};
   for (const [acc, v] of Object.entries(deltas)) if (v !== 0) netFlow[acc] = increment(v);
   return { netFlow };
+}
+
+/** Turn a signed month contribution into an atomic-increment set-merge payload
+ *  (with the queryable `yearMonth` field and a touch timestamp). */
+function monthRollupDelta(ym: string, c: RollupContribution): Record<string, unknown> {
+  const p: Record<string, unknown> = { yearMonth: ym, updatedAt: serverTimestamp() };
+  if (c.income !== 0) p.income = increment(c.income);
+  if (c.expense !== 0) p.expense = increment(c.expense);
+  const byCat = (m: Record<string, number>) => {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(m)) if (v !== 0) out[k] = increment(v);
+    return Object.keys(out).length ? out : null;
+  };
+  const ec = byCat(c.expenseByCategory);
+  const ic = byCat(c.incomeByCategory);
+  if (ec) p.expenseByCategory = ec;
+  if (ic) p.incomeByCategory = ic;
+  return p;
+}
+
+function rollupFromSnapshot(snap: QueryDocumentSnapshot<DocumentData>): MonthlyRollup {
+  const d = snap.data();
+  return {
+    yearMonth: d.yearMonth ?? snap.id,
+    income: d.income ?? 0,
+    expense: d.expense ?? 0,
+    expenseByCategory: d.expenseByCategory ?? {},
+    incomeByCategory: d.incomeByCategory ?? {},
+  };
 }
 
 function fromSnapshot(snap: QueryDocumentSnapshot<DocumentData>): Transaction {
@@ -133,6 +165,11 @@ export const transactionRepo = {
       deletedAt: null,
     });
     batch.set(rollupRef(ledgerId), rollupDelta(accountDeltas(input, 1)), { merge: true });
+    const mc = monthContribution(input, 1);
+    if (mc) {
+      const ym = yearMonthOf(input.date);
+      batch.set(monthRollupRef(ledgerId, ym), monthRollupDelta(ym, mc), { merge: true });
+    }
     await batch.commit();
     return ref.id;
   },
@@ -201,6 +238,27 @@ export const transactionRepo = {
     );
   },
 
+  /** Live per-month rollups over an inclusive [startYm, endYm] range, oldest
+   *  first — a few small docs instead of every transaction (see MonthlyRollup). */
+  subscribeRollups(
+    ledgerId: string,
+    startYm: string,
+    endYm: string,
+    cb: (rollups: MonthlyRollup[]) => void,
+  ): Unsubscribe {
+    const q = query(
+      rollupsCol(ledgerId),
+      where("yearMonth", ">=", startYm),
+      where("yearMonth", "<=", endYm),
+      orderBy("yearMonth"),
+    );
+    return onSnapshot(
+      q,
+      (snap) => cb(snap.docs.map(rollupFromSnapshot)),
+      (e) => console.error("rollups", e),
+    );
+  },
+
   /** Edit in place (loose model): reverse the old effect, apply the new one. */
   async update(ledgerId: string, id: string, patch: Partial<NewTransactionInput>): Promise<void> {
     await runTransaction(db, async (tx) => {
@@ -220,14 +278,27 @@ export const transactionRepo = {
         accountId: patch.accountId ?? old.accountId,
         toAccountId: patch.toAccountId !== undefined ? patch.toAccountId : (old.toAccountId ?? null),
         baseAmount: patch.baseAmount ?? old.baseAmount,
+        categoryId: patch.categoryId !== undefined ? patch.categoryId : (old.categoryId ?? null),
       };
+      const notDeleted = (old.deletedAt ?? null) === null;
+
       const deltas: Record<string, number> = {};
       const merge = (m: Record<string, number>) => {
         for (const [k, v] of Object.entries(m)) deltas[k] = (deltas[k] ?? 0) + v;
       };
-      if ((old.deletedAt ?? null) === null) merge(accountDeltas(old as never, -1));
+      if (notDeleted) merge(accountDeltas(old as never, -1));
       merge(accountDeltas(merged, 1));
       tx.set(rollupRef(ledgerId), rollupDelta(deltas), { merge: true });
+
+      // Month rollups: reverse the old month, apply the new — different docs
+      // when the date crosses a month boundary.
+      const oldYm = old.yearMonth ?? yearMonthOf((old.date as Timestamp).toDate());
+      const newYm = patch.date ? yearMonthOf(patch.date) : oldYm;
+      const months = new Map<string, RollupContribution>();
+      if (notDeleted) addContribution(months, oldYm, monthContribution(old as never, -1));
+      addContribution(months, newYm, monthContribution(merged, 1));
+      for (const [ym, c] of months)
+        tx.set(monthRollupRef(ledgerId, ym), monthRollupDelta(ym, c), { merge: true });
     });
   },
 
@@ -237,8 +308,11 @@ export const transactionRepo = {
       const ref = doc(transactionsCol(ledgerId), id);
       const snap = await tx.get(ref);
       if (!snap.exists() || (snap.data().deletedAt ?? null) !== null) return;
+      const data = snap.data();
       tx.update(ref, { deletedAt: serverTimestamp(), updatedAt: serverTimestamp() });
-      tx.set(rollupRef(ledgerId), rollupDelta(accountDeltas(snap.data() as never, -1)), {
+      tx.set(rollupRef(ledgerId), rollupDelta(accountDeltas(data as never, -1)), { merge: true });
+      const mc = monthContribution(data as never, -1);
+      if (mc) tx.set(monthRollupRef(ledgerId, data.yearMonth), monthRollupDelta(data.yearMonth, mc), {
         merge: true,
       });
     });
@@ -250,8 +324,11 @@ export const transactionRepo = {
       const ref = doc(transactionsCol(ledgerId), id);
       const snap = await tx.get(ref);
       if (!snap.exists() || (snap.data().deletedAt ?? null) === null) return;
+      const data = snap.data();
       tx.update(ref, { deletedAt: null, updatedAt: serverTimestamp() });
-      tx.set(rollupRef(ledgerId), rollupDelta(accountDeltas(snap.data() as never, 1)), {
+      tx.set(rollupRef(ledgerId), rollupDelta(accountDeltas(data as never, 1)), { merge: true });
+      const mc = monthContribution(data as never, 1);
+      if (mc) tx.set(monthRollupRef(ledgerId, data.yearMonth), monthRollupDelta(data.yearMonth, mc), {
         merge: true,
       });
     });

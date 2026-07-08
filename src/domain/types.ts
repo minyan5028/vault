@@ -77,6 +77,25 @@ export interface RecurringRule {
   active: boolean;
 }
 
+/** Category-key used in rollups for transactions with no category. */
+export const UNCATEGORIZED = "uncategorized";
+
+/**
+ * Per-month aggregate for a ledger, maintained on every write (see
+ * `transactionRepo`) so Stats/trends read a few small docs instead of every
+ * transaction. Stored at `ledgers/{id}/rollups/{yearMonth}`. Transfers are
+ * excluded (they move money between accounts, not income/expense). All money
+ * fields are integer minor units (×100); category maps key on categoryId, or
+ * `UNCATEGORIZED` when null.
+ */
+export interface MonthlyRollup {
+  yearMonth: string;
+  income: number;
+  expense: number;
+  expenseByCategory: Record<string, number>;
+  incomeByCategory: Record<string, number>;
+}
+
 /** A Financial Event. All money fields are integer minor units (×100). */
 export interface Transaction {
   id: string;
