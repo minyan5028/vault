@@ -1,19 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { formatMoney } from "../../lib/money";
 import { yearMonthOf, shiftMonth, monthLabel } from "../../lib/date";
 import { useRollups } from "../../data/useRollups";
 import { useTransactionsForMonths } from "../../data/useTransactionsForMonths";
 import { sumRollups } from "../../lib/rollup";
 import { UNCATEGORIZED, type Account, type Category, type Transaction } from "../../domain/types";
-import { EntryRow } from "../../components/EntryRow";
 import { Pill } from "../../components/Pill";
 import { StatCell } from "../../components/StatCell";
 import { TrendChart, type TrendPoint } from "./TrendChart";
-import { CategoryDonut } from "./CategoryDonut";
 import { SLICE_COLORS, OTHER_COLOR, type Slice } from "./donutPalette";
-
-const BASE_CURRENCY = "TWD";
+import { CategoryBreakdown } from "./CategoryBreakdown";
+import { ContentList } from "./ContentList";
+import { DrillView } from "./DrillView";
 
 type Period = "month" | "year";
 type View = "category" | "trend" | "content";
@@ -221,137 +219,25 @@ export function Stats({
         {view === "trend" ? (
           <TrendChart points={trend} selected={anchor} locale={locale} />
         ) : view === "content" ? (
-          contentRows.length === 0 ? (
-            <p className="mt-16 text-center text-sm text-slate-600">{t("empty")}</p>
-          ) : (
-            <ul className="mt-4 divide-y divide-slate-800">
-              {contentRows.map((r) => (
-                <li key={r.title}>
-                  <button
-                    type="button"
-                    onClick={() => setDrill({ kind: "title", key: r.title, label: r.title })}
-                    className="flex w-full items-center gap-2 py-2 text-left text-sm"
-                  >
-                    <span className="flex-1 truncate text-slate-200">{r.title}</span>
-                    <span className="tabular-nums text-slate-500">{r.count}</span>
-                    <span className="w-24 text-right tabular-nums text-slate-200">
-                      {formatMoney(r.total, BASE_CURRENCY, locale)}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )
-        ) : modeTotal === 0 ? (
-          <p className="mt-16 text-center text-sm text-slate-600">{t("empty")}</p>
+          <ContentList
+            rows={contentRows}
+            locale={locale}
+            onDrill={(title) => setDrill({ kind: "title", key: title, label: title })}
+          />
         ) : (
-          <>
-            <div className="mt-4">
-              <CategoryDonut slices={donut} total={modeTotal} locale={locale} />
-            </div>
-            <ul className="mt-4 space-y-3">
-              {rows.map((r, i) => {
-                const cat =
-                  r.id === UNCATEGORIZED ? undefined : categories.find((c) => c.id === r.id);
-                const pct = Math.round((r.amount / modeTotal) * 100);
-                const color = i < 6 ? SLICE_COLORS[i] : OTHER_COLOR;
-                const label = cat?.name ?? t("uncategorized");
-                return (
-                  <li key={r.id}>
-                    <button
-                      type="button"
-                      onClick={() => setDrill({ kind: "category", key: r.id, label })}
-                      className="w-full text-left"
-                    >
-                      <div className="mb-1 flex items-center gap-2 text-sm">
-                        <span
-                          className="h-2.5 w-2.5 shrink-0 rounded-full"
-                          style={{ background: color }}
-                        />
-                        <span className="text-base">{cat?.icon ?? "•"}</span>
-                        <span className="flex-1 truncate text-slate-200">{label}</span>
-                        <span className="tabular-nums text-slate-400">{pct}%</span>
-                        <span className="w-24 text-right tabular-nums text-slate-200">
-                          {formatMoney(r.amount, BASE_CURRENCY, locale)}
-                        </span>
-                      </div>
-                      <div className="h-1.5 overflow-hidden rounded-full bg-slate-800">
-                        <div
-                          className="h-full rounded-full"
-                          style={{ width: `${pct}%`, background: color }}
-                        />
-                      </div>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </>
+          <CategoryBreakdown
+            rows={rows}
+            donut={donut}
+            total={modeTotal}
+            categories={categories}
+            locale={locale}
+            onDrill={(key, label) => setDrill({ kind: "category", key, label })}
+          />
         )}
           </>
         )}
       </div>
     </main>
-  );
-}
-
-/** The transactions behind a tapped category or title, for the selected period.
- *  Reuses the Timeline's row (tap to edit, swipe to delete). */
-function DrillView({
-  label,
-  txns,
-  accounts,
-  categories,
-  locale,
-  onBack,
-  onEdit,
-  onDelete,
-}: {
-  label: string;
-  txns: Transaction[];
-  accounts: Account[];
-  categories: Category[];
-  locale: string;
-  onBack: () => void;
-  onEdit: (tx: Transaction) => void;
-  onDelete: (tx: Transaction) => void;
-}) {
-  const { t } = useTranslation();
-  const total = txns.reduce((s, tx) => s + tx.baseAmount, 0);
-  return (
-    <div>
-      <button
-        type="button"
-        onClick={onBack}
-        className="-ml-2 flex items-center gap-1 py-2 text-sm text-slate-400"
-      >
-        <span className="text-lg leading-none">‹</span>
-        {t("stats")}
-      </button>
-      <div className="flex items-baseline justify-between border-b border-slate-800 pb-2">
-        <span className="min-w-0 flex-1 truncate text-base font-semibold">{label}</span>
-        <span className="ml-3 shrink-0 tabular-nums text-slate-300">
-          {formatMoney(total, BASE_CURRENCY, locale)}
-        </span>
-      </div>
-      {txns.length === 0 ? (
-        <p className="mt-16 text-center text-sm text-slate-600">{t("empty")}</p>
-      ) : (
-        <ul className="mt-2 divide-y divide-slate-800">
-          {txns.map((tx) => (
-            <EntryRow
-              key={tx.id}
-              tx={tx}
-              locale={locale}
-              accounts={accounts}
-              categories={categories}
-              onEdit={onEdit}
-              onDelete={onDelete}
-            />
-          ))}
-        </ul>
-      )}
-    </div>
   );
 }
 
