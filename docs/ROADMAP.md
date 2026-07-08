@@ -221,19 +221,28 @@ doing it before building lots of analytics avoids rework.
 
 ---
 
-## Recommended immediate next steps
+## Remaining work (parked — decide when to pick up)
 
-Phase 1 (MVP) and Phase 2 (sharing) are shipped and in daily use. Next up is
-**Phase 3 — analytics & budgeting**:
+Phase 1 (MVP), Phase 2 (sharing), and most of Phase 3 (analytics) are shipped and
+in daily use. What's left, so it isn't lost:
 
-1. **Monthly summary by category** (sum `baseAmount`) — the first analytics view.
-2. **Category-breakdown + trend charts** (follow the dataviz conventions).
-3. **Budgets per account-bucket** (envelope style) + overspend indicators.
-4. **Filters & search** (category / account / date range / title text).
-5. **CSV / JSON export** — delivers "own your data" for real.
+**Phase 3 leftovers**
 
-Small carry-over from Phase 2: show `createdBy` attribution in the transaction
-UI (data already captured).
+1. **Cross-history global search** — the Timeline filter bar covers the *current
+   month* (text / category / account / type, client-side). A search spanning all
+   months needs Firestore queries (title is prefix-only for Chinese) — separate feature.
+2. **Budgets** — per account-bucket (envelope style) + progress / overspend
+   indicators. Deferred: not a current pain. Adds a `budgets` collection, no
+   migration. Decision locked: monthly, per account-bucket.
+3. **Date-range filter** — the filter bar has no explicit date-range control yet
+   (month navigation + within-month filtering only).
+
+**Engineering hygiene (noticed, not urgent)**
+
+- **No linter** — there's no ESLint config; add one (typescript-eslint +
+  react-hooks) and a `lint` script so hook-deps / dead code are caught.
+- `src/features/stats/Stats.tsx` has grown large — consider extracting the
+  breakdown/drill sub-views.
 
 ---
 
