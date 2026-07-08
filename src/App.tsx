@@ -157,7 +157,15 @@ function AuthedApp({ user }: { user: User }) {
           onDelete={(tx) => deleteTx(tx.id)}
         />
       )}
-      {tab === "stats" && <Stats ledgerId={ledgerId} categories={categories} />}
+      {tab === "stats" && (
+        <Stats
+          ledgerId={ledgerId}
+          accounts={accounts}
+          categories={categories}
+          onEdit={(tx) => setEditor({ tx })}
+          onDelete={(tx) => deleteTx(tx.id)}
+        />
+      )}
       {tab === "assets" && (
         <Assets
           ledgerId={ledgerId}

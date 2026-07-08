@@ -180,13 +180,6 @@ export const transactionRepo = {
     return sortActive((await getDocs(q)).docs);
   },
 
-  /** Active transactions across several months (one-shot), newest first. Used
-   *  by the by-title breakdown, which needs raw titles (not in the rollups). */
-  async fetchMonths(ledgerId: string, months: string[]): Promise<Transaction[]> {
-    const perMonth = await Promise.all(months.map((m) => this.fetchMonth(ledgerId, m)));
-    return perMonth.flat().sort(cmpDesc);
-  },
-
   /** Live subscription to a month (offline-capable; sort/filter client-side). */
   subscribeByMonth(
     ledgerId: string,

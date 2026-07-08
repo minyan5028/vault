@@ -1,11 +1,12 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { formatMoney } from "../../lib/money";
 import { yearMonthOf, shiftMonth, monthLabel } from "../../lib/date";
 import { useRollups } from "../../data/useRollups";
 import { useTransactionsForMonths } from "../../data/useTransactionsForMonths";
 import { sumRollups } from "../../lib/rollup";
-import { UNCATEGORIZED, type Category } from "../../domain/types";
+import { UNCATEGORIZED, type Account, type Category, type Transaction } from "../../domain/types";
+import { EntryRow } from "../../components/EntryRow";
 import { TrendChart, type TrendPoint } from "./TrendChart";
 import { CategoryDonut, SLICE_COLORS, OTHER_COLOR, type Slice } from "./CategoryDonut";
 
@@ -22,11 +23,25 @@ type Mode = "expense" | "income";
  * whole year). The by-title view fetches that period's raw transactions
  * on-demand, since titles aren't in the rollups.
  */
-export function Stats({ ledgerId, categories }: { ledgerId: string; categories: Category[] }) {
+export function Stats({
+  ledgerId,
+  accounts,
+  categories,
+  onEdit,
+  onDelete,
+}: {
+  ledgerId: string;
+  accounts: Account[];
+  categories: Category[];
+  onEdit: (tx: Transaction) => void;
+  onDelete: (tx: Transaction) => void;
+}) {
   const { t, i18n } = useTranslation();
   const locale = i18n.language;
   const [period, setPeriod] = useState<Period>("month");
   const [view, setView] = useState<View>("category");
+  // A tapped category / title row drills into its transactions for the period.
+  const [drill, setDrill] = useState<{ kind: "category" | "title"; key: string; label: string } | null>(null);
   // Income vs expense drives the category donut and the by-title list (each is
   // one total broken apart); the trend chart always shows both.
   const [mode, setMode] = useState<Mode>("expense");
@@ -94,11 +109,15 @@ export function Stats({ ledgerId, categories }: { ledgerId: string; categories: 
     [months, byMonth],
   );
 
-  // By-title breakdown — raw transactions for the period, only when its tab is open.
-  const contentTx = useTransactionsForMonths(ledgerId, view === "content" ? periodMonths : []);
+  // Raw transactions for the period — needed by the by-title breakdown and any
+  // drill-down (titles/rows aren't in the rollups). Loaded only when in use.
+  const periodTx = useTransactionsForMonths(
+    ledgerId,
+    view === "content" || drill ? periodMonths : [],
+  );
   const contentRows = useMemo(() => {
     const m = new Map<string, { total: number; count: number }>();
-    for (const tx of contentTx) {
+    for (const tx of periodTx) {
       if (tx.type !== mode) continue;
       const key = tx.title.trim() || "—";
       const cur = m.get(key) ?? { total: 0, count: 0 };
@@ -109,7 +128,21 @@ export function Stats({ ledgerId, categories }: { ledgerId: string; categories: 
     return [...m.entries()]
       .map(([title, v]) => ({ title, ...v }))
       .sort((a, b) => b.total - a.total);
-  }, [contentTx, mode]);
+  }, [periodTx, mode]);
+
+  // Transactions behind the drilled-into category or title (period + mode).
+  const drillTx = useMemo(() => {
+    if (!drill) return [];
+    return periodTx.filter((tx) => {
+      if (tx.type !== mode) return false;
+      return drill.kind === "category"
+        ? (tx.categoryId ?? UNCATEGORIZED) === drill.key
+        : (tx.title.trim() || "—") === drill.key;
+    });
+  }, [periodTx, drill, mode]);
+
+  // Close a drill-down if the context it was opened in changes.
+  useEffect(() => setDrill(null), [period, mode, anchor, view]);
 
   const shift = (d: number) => setAnchor((a) => shiftMonth(a, period === "year" ? d * 12 : d));
   const heading = period === "year" ? anchor.slice(0, 4) : monthLabel(anchor, locale);
@@ -121,6 +154,19 @@ export function Stats({ ledgerId, categories }: { ledgerId: string; categories: 
   return (
     <main className="min-h-dvh bg-slate-900 text-slate-100">
       <div className="mx-auto max-w-md px-4 pb-28 pt-4">
+        {drill ? (
+          <DrillView
+            label={drill.label}
+            txns={drillTx}
+            accounts={accounts}
+            categories={categories}
+            locale={locale}
+            onBack={() => setDrill(null)}
+            onEdit={onEdit}
+            onDelete={onDelete}
+          />
+        ) : (
+          <>
         <header className="flex items-center justify-between py-1">
           <span className="text-lg font-semibold tracking-tight">{t("stats")}</span>
           <div className="flex gap-1 text-xs">
@@ -199,12 +245,18 @@ export function Stats({ ledgerId, categories }: { ledgerId: string; categories: 
           ) : (
             <ul className="mt-4 divide-y divide-slate-800">
               {contentRows.map((r) => (
-                <li key={r.title} className="flex items-center gap-2 py-2 text-sm">
-                  <span className="flex-1 truncate text-slate-200">{r.title}</span>
-                  <span className="tabular-nums text-slate-500">{r.count}</span>
-                  <span className="w-24 text-right tabular-nums text-slate-200">
-                    {formatMoney(r.total, BASE_CURRENCY, locale)}
-                  </span>
+                <li key={r.title}>
+                  <button
+                    type="button"
+                    onClick={() => setDrill({ kind: "title", key: r.title, label: r.title })}
+                    className="flex w-full items-center gap-2 py-2 text-left text-sm"
+                  >
+                    <span className="flex-1 truncate text-slate-200">{r.title}</span>
+                    <span className="tabular-nums text-slate-500">{r.count}</span>
+                    <span className="w-24 text-right tabular-nums text-slate-200">
+                      {formatMoney(r.total, BASE_CURRENCY, locale)}
+                    </span>
+                  </button>
                 </li>
               ))}
             </ul>
@@ -222,29 +274,39 @@ export function Stats({ ledgerId, categories }: { ledgerId: string; categories: 
                   r.id === UNCATEGORIZED ? undefined : categories.find((c) => c.id === r.id);
                 const pct = Math.round((r.amount / modeTotal) * 100);
                 const color = i < 6 ? SLICE_COLORS[i] : OTHER_COLOR;
+                const label = cat?.name ?? t("uncategorized");
                 return (
                   <li key={r.id}>
-                    <div className="mb-1 flex items-center gap-2 text-sm">
-                      <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: color }} />
-                      <span className="text-base">{cat?.icon ?? "•"}</span>
-                      <span className="flex-1 truncate text-slate-200">
-                        {cat?.name ?? t("uncategorized")}
-                      </span>
-                      <span className="tabular-nums text-slate-400">{pct}%</span>
-                      <span className="w-24 text-right tabular-nums text-slate-200">
-                        {formatMoney(r.amount, BASE_CURRENCY, locale)}
-                      </span>
-                    </div>
-                    <div className="h-1.5 overflow-hidden rounded-full bg-slate-800">
-                      <div
-                        className="h-full rounded-full"
-                        style={{ width: `${pct}%`, background: color }}
-                      />
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setDrill({ kind: "category", key: r.id, label })}
+                      className="w-full text-left"
+                    >
+                      <div className="mb-1 flex items-center gap-2 text-sm">
+                        <span
+                          className="h-2.5 w-2.5 shrink-0 rounded-full"
+                          style={{ background: color }}
+                        />
+                        <span className="text-base">{cat?.icon ?? "•"}</span>
+                        <span className="flex-1 truncate text-slate-200">{label}</span>
+                        <span className="tabular-nums text-slate-400">{pct}%</span>
+                        <span className="w-24 text-right tabular-nums text-slate-200">
+                          {formatMoney(r.amount, BASE_CURRENCY, locale)}
+                        </span>
+                      </div>
+                      <div className="h-1.5 overflow-hidden rounded-full bg-slate-800">
+                        <div
+                          className="h-full rounded-full"
+                          style={{ width: `${pct}%`, background: color }}
+                        />
+                      </div>
+                    </button>
                   </li>
                 );
               })}
             </ul>
+          </>
+        )}
           </>
         )}
       </div>
@@ -269,6 +331,66 @@ function Stat({
       <p className={"mt-0.5 text-base font-semibold tabular-nums " + className}>
         {formatMoney(minor, BASE_CURRENCY, locale)}
       </p>
+    </div>
+  );
+}
+
+/** The transactions behind a tapped category or title, for the selected period.
+ *  Reuses the Timeline's row (tap to edit, swipe to delete). */
+function DrillView({
+  label,
+  txns,
+  accounts,
+  categories,
+  locale,
+  onBack,
+  onEdit,
+  onDelete,
+}: {
+  label: string;
+  txns: Transaction[];
+  accounts: Account[];
+  categories: Category[];
+  locale: string;
+  onBack: () => void;
+  onEdit: (tx: Transaction) => void;
+  onDelete: (tx: Transaction) => void;
+}) {
+  const { t } = useTranslation();
+  const total = txns.reduce((s, tx) => s + tx.baseAmount, 0);
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={onBack}
+        className="-ml-2 flex items-center gap-1 py-2 text-sm text-slate-400"
+      >
+        <span className="text-lg leading-none">‹</span>
+        {t("stats")}
+      </button>
+      <div className="flex items-baseline justify-between border-b border-slate-800 pb-2">
+        <span className="min-w-0 flex-1 truncate text-base font-semibold">{label}</span>
+        <span className="ml-3 shrink-0 tabular-nums text-slate-300">
+          {formatMoney(total, BASE_CURRENCY, locale)}
+        </span>
+      </div>
+      {txns.length === 0 ? (
+        <p className="mt-16 text-center text-sm text-slate-600">{t("empty")}</p>
+      ) : (
+        <ul className="mt-2 divide-y divide-slate-800">
+          {txns.map((tx) => (
+            <EntryRow
+              key={tx.id}
+              tx={tx}
+              locale={locale}
+              accounts={accounts}
+              categories={categories}
+              onEdit={onEdit}
+              onDelete={onDelete}
+            />
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
