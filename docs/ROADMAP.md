@@ -21,12 +21,12 @@ Legend: ✅ done · 🔜 next · ⬜ not started
 | Data model spec (`docs/SPEC.md`) | M | ✅ |
 | Money model decided (×100 integer, FX at entry) | M | ✅ |
 | Notion migration script + seed JSON (3,144 txns) | M | ✅ |
-| Firebase project created (Auth + Firestore + Hosting) | S | ⬜ |
-| Firestore **security rules** (ledger-membership based) | M | ⬜ |
-| Firestore **composite indexes** plan (`yearMonth, deletedAt, date`) | S | ⬜ |
-| Admin SDK **loader** to import seed into Firestore | S | ⬜ |
-| Frontend scaffolding decisions (see below) | M | 🔜 |
-| "3-second entry" UX wireframe | M | 🔜 |
+| Firebase project created (Auth + Firestore + Hosting) | S | ✅ |
+| Firestore **security rules** (ledger-membership based) | M | ✅ |
+| Firestore **composite indexes** plan (`yearMonth, deletedAt, date`) | S | ⬜ (auto single-field indexes suffice so far; no committed `firestore.indexes.json`) |
+| Admin SDK **loader** to import seed into Firestore | S | ✅ (`scripts/load_seed.mjs`) |
+| Frontend scaffolding decisions (see below) | M | ✅ |
+| "3-second entry" UX wireframe | M | ✅ |
 
 **Frontend decisions to lock:** build tool (Vite vs Next.js), TypeScript (yes),
 state/data layer (Firestore SDK + which offline strategy), UI approach (headless
@@ -44,19 +44,23 @@ expense in **under 3 seconds**; see this month.
 
 > Executable task breakdown: [phase-1-tasks.md](phase-1-tasks.md).
 
-| Deliverable | Size |
-|-------------|------|
-| Google sign-in (Firebase Auth) | S |
-| Firestore integration + offline persistence | M |
-| **Quick-entry screen** — numpad-first, expense/income/transfer toggle, category icon grid, account selector, date defaults today, optional title/note | L |
-| Income & transfer entry (transfer: from/to account, no category) | M |
-| Recent/frequent categories surfaced first (Food is 62% of data) | S |
-| Transaction list — this month, grouped by day, running total | M |
-| Edit / soft-delete a transaction | S |
-| Category management (CRUD; seed the 14) | M |
-| Account management (CRUD; seed the 6 buckets) | M |
-| Import the 3-year seed so it's useful from day one | S |
-| PWA installable on phone (offline-capable) | M |
+| Deliverable | Size | Status |
+|-------------|------|--------|
+| Google sign-in (Firebase Auth) | S | ✅ |
+| Firestore integration + offline persistence | M | ✅ |
+| **Quick-entry screen** — numpad-first, expense/income/transfer toggle, category icon grid, account selector, date defaults today, optional title/note | L | ✅ |
+| Income & transfer entry (transfer: from/to account, no category) | M | ✅ |
+| Recent/frequent categories surfaced first (Food is 62% of data) | S | ✅ |
+| Transaction list — this month, grouped by day, running total | M | ✅ |
+| Edit / soft-delete a transaction | S | ✅ |
+| Category management (CRUD; seed the 14) | M | ✅ |
+| Account management (CRUD; seed the 6 buckets) | M | ✅ |
+| Import the 3-year seed so it's useful from day one | S | ✅ |
+| PWA installable on phone (offline-capable) | M | ✅ |
+
+**Phase 1 is complete and deployed live** at https://vault-39af9.web.app; user
+is dogfooding daily on phone. (Bonus beyond scope: recurring transactions, an
+Assets page with per-account balances + running-balance account detail.)
 
 **Data model impact:** none — Phase 1 is exactly the current spec (`type`
 already covers expense/income/transfer).
@@ -84,13 +88,17 @@ are members of, while Personal/Dream/etc stay private. This keeps security rules
 simple ("member of the ledger ⇒ can read/write it") and needs no per-account
 permissions.
 
-| Deliverable | Size |
-|-------------|------|
-| Multiple ledgers per user + ledger switcher (Personal / Couple's) | M |
-| Invite & join a ledger (invitation flow) | L |
-| Roles: owner / member; security rules for multi-member read/write | L |
-| Per-transaction `createdBy` attribution shown in UI | S |
-| Real-time sync UX (two people editing) | M |
+| Deliverable | Size | Status |
+|-------------|------|--------|
+| Multiple ledgers per user + ledger switcher (Personal / Couple's) | M | ✅ |
+| Invite & join a ledger (invitation flow) | L | ✅ (Gmail invite / accept) |
+| Roles: owner / member; security rules for multi-member read/write | L | ✅ (`firestore.rules`) |
+| Per-transaction `createdBy` attribution shown in UI | S | ⬜ (`createdBy` is stored, not yet displayed) |
+| Real-time sync UX (two people editing) | M | ✅ (live via `onSnapshot`) |
+
+**Phase 2 is functionally complete** — sharing works end-to-end. Only remaining
+item is showing `createdBy` attribution in the transaction UI (data is already
+captured).
 
 **Data model impact:** `members` map already exists; add roles + an
 `invitations` collection. No restructuring — this is why data lives under a
@@ -109,9 +117,9 @@ ledger and see each other's entries live, while personal ledgers stay private.
 
 ---
 
-## Phase 3 — Analytics, Budgeting & Reporting
+## Phase 3 — Analytics, Budgeting & Reporting 🔜
 
-**Goal:** understand spending and stay on budget.
+**Goal:** understand spending and stay on budget. **← next phase.**
 
 | Deliverable | Size |
 |-------------|------|
@@ -191,10 +199,11 @@ Domain concepts defined in SPEC.md but not yet placed in a phase:
 
 ## Cross-cutting (every phase)
 
-- **Offline-first behavior** — entry must work with no signal, sync later.
-- **Backup / export** — never trap the data; export lands in Phase 2.
-- **Security rules** — tighten as sharing (Phase 3) arrives.
-- **Testing** — at least the money math (×100, FX rounding) has unit tests.
+- **Offline-first behavior** — entry must work with no signal, sync later. ✅
+- **Backup / export** — never trap the data; export scheduled in Phase 3.
+- **Security rules** — ledger-membership rules shipped with Phase 2
+  (`firestore.rules`); tighten further as roles/features grow.
+- **Testing** — at least the money math (×100, FX rounding) has unit tests. ✅
 
 ---
 
@@ -213,10 +222,17 @@ doing it before building lots of analytics avoids rework.
 
 ## Recommended immediate next steps
 
-1. Design the **3-second quick-entry UX** (no backend needed — do it now).
-2. Create the **Firebase project** + lock frontend scaffolding decisions.
-3. Write the **security rules** + **Admin SDK loader**, import the seed.
-4. Build Phase 1 quick-entry against the loaded real data.
+Phase 1 (MVP) and Phase 2 (sharing) are shipped and in daily use. Next up is
+**Phase 3 — analytics & budgeting**:
+
+1. **Monthly summary by category** (sum `baseAmount`) — the first analytics view.
+2. **Category-breakdown + trend charts** (follow the dataviz conventions).
+3. **Budgets per account-bucket** (envelope style) + overspend indicators.
+4. **Filters & search** (category / account / date range / title text).
+5. **CSV / JSON export** — delivers "own your data" for real.
+
+Small carry-over from Phase 2: show `createdBy` attribution in the transaction
+UI (data already captured).
 
 ---
 
