@@ -46,6 +46,10 @@ export function Timeline({
   const locale = i18n.language;
   const [month, setMonth] = useState<string>(() => yearMonthOf(new Date()));
   const [filter, setFilter] = useState<"all" | EventType>("all");
+  const [showFilters, setShowFilters] = useState(false);
+  const [query, setQuery] = useState("");
+  const [categoryId, setCategoryId] = useState("");
+  const [accountId, setAccountId] = useState("");
   const txns = useMonthTransactions(ledgerId, month);
 
   // Attribution: only meaningful in a shared ledger, and shown for others' entries.
@@ -57,12 +61,32 @@ export function Timeline({
     return p?.name || p?.email || undefined;
   };
 
-  const summary = useMemo(() => totals(txns), [txns]);
+  // Filters run on the loaded month (instant, no extra reads); the summary
+  // reflects whatever is currently in view.
+  const q = query.trim().toLowerCase();
+  const filtersActive = filter !== "all" || categoryId !== "" || accountId !== "" || q !== "";
   const filtered = useMemo(
-    () => (filter === "all" ? txns : txns.filter((t) => t.type === filter)),
-    [txns, filter],
+    () =>
+      txns.filter((tx) => {
+        if (filter !== "all" && tx.type !== filter) return false;
+        if (categoryId && tx.categoryId !== categoryId) return false;
+        if (accountId && tx.accountId !== accountId && tx.toAccountId !== accountId) return false;
+        if (q && !tx.title.toLowerCase().includes(q) && !(tx.note ?? "").toLowerCase().includes(q))
+          return false;
+        return true;
+      }),
+    [txns, filter, categoryId, accountId, q],
   );
+  const summary = useMemo(() => totals(filtered), [filtered]);
   const groups = useMemo(() => groupByDay(filtered), [filtered]);
+  const clearFilters = () => {
+    setFilter("all");
+    setQuery("");
+    setCategoryId("");
+    setAccountId("");
+  };
+  const activeCategories = categories.filter((c) => !c.archived);
+  const activeAccounts = accounts.filter((a) => !a.archived);
 
   return (
     <main className="min-h-dvh bg-slate-900 text-slate-100">
@@ -86,27 +110,90 @@ export function Timeline({
           <StatCell label={t("total")} minor={summary.net} />
         </div>
 
-        {/* Type filter */}
-        <div className="mt-3 flex gap-2 text-xs">
-          {FILTERS.map((f) => (
-            <button
-              key={f}
-              type="button"
-              onClick={() => setFilter(f)}
-              className={
-                "rounded-full px-3 py-1 " +
-                (filter === f ? "bg-slate-100 text-slate-900" : "bg-slate-800 text-slate-400")
-              }
-            >
-              {f === "all" ? t("all") : t(`type_${f}` as "type_expense")}
-            </button>
-          ))}
+        {/* Type filter + search/filter toggle */}
+        <div className="mt-3 flex items-center gap-2 text-xs">
+          <div className="flex flex-1 gap-2">
+            {FILTERS.map((f) => (
+              <button
+                key={f}
+                type="button"
+                onClick={() => setFilter(f)}
+                className={
+                  "rounded-full px-3 py-1 " +
+                  (filter === f ? "bg-slate-100 text-slate-900" : "bg-slate-800 text-slate-400")
+                }
+              >
+                {f === "all" ? t("all") : t(`type_${f}` as "type_expense")}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowFilters((v) => !v)}
+            aria-label={t("search")}
+            aria-pressed={showFilters}
+            className={
+              "rounded-full px-3 py-1 " +
+              (showFilters || filtersActive
+                ? "bg-slate-100 text-slate-900"
+                : "bg-slate-800 text-slate-400")
+            }
+          >
+            🔍
+          </button>
         </div>
+
+        {showFilters && (
+          <div className="mt-2 space-y-2">
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={t("searchPlaceholder")}
+              className="w-full rounded bg-slate-800 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500"
+            />
+            <div className="flex gap-2 text-sm">
+              <select
+                value={categoryId}
+                onChange={(e) => setCategoryId(e.target.value)}
+                className="min-w-0 flex-1 rounded bg-slate-800 px-2 py-2 text-slate-200"
+              >
+                <option value="">{t("allCategories")}</option>
+                {activeCategories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={accountId}
+                onChange={(e) => setAccountId(e.target.value)}
+                className="min-w-0 flex-1 rounded bg-slate-800 px-2 py-2 text-slate-200"
+              >
+                <option value="">{t("allAccounts")}</option>
+                {activeAccounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {filtersActive && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="text-xs text-slate-400 underline"
+              >
+                {t("clearFilters")}
+              </button>
+            )}
+          </div>
+        )}
 
         {filtered.length === 0 ? (
           <div className="mt-20 text-center text-slate-600">
-            <div className="text-4xl">💰</div>
-            <p className="mt-3 text-sm">{t("empty")}</p>
+            <div className="text-4xl">{filtersActive ? "🔍" : "💰"}</div>
+            <p className="mt-3 text-sm">{filtersActive ? t("noResults") : t("empty")}</p>
           </div>
         ) : (
           <div className="mt-4 space-y-5">
