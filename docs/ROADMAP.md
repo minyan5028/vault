@@ -237,12 +237,14 @@ in daily use. What's left, so it isn't lost:
 3. **Date-range filter** — the filter bar has no explicit date-range control yet
    (month navigation + within-month filtering only).
 
-**Engineering hygiene (noticed, not urgent)**
+**Engineering hygiene**
 
-- **No linter** — there's no ESLint config; add one (typescript-eslint +
-  react-hooks) and a `lint` script so hook-deps / dead code are caught.
-- `src/features/stats/Stats.tsx` has grown large — consider extracting the
-  breakdown/drill sub-views.
+- ✅ ESLint (flat config: typescript-eslint + react-hooks + react-refresh) +
+  `lint` script added; findings fixed.
+- ✅ Shared `Pill` extracted; stat cells unified onto `StatCell`.
+- ✅ `Stats.tsx` split into `DrillView` / `CategoryBreakdown` / `ContentList`.
+- Remaining: no component/interaction tests yet (only pure-logic units) — add
+  if regressions start appearing.
 
 ---
 
