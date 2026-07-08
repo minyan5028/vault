@@ -128,7 +128,7 @@ ledger and see each other's entries live, while personal ledgers stay private.
 | By-title breakdown + drill-down into a category/title's transactions | M | ✅ (tap a row → its transactions → edit/delete) |
 | **Budgets per account-bucket first** (envelope style), category budgets later | L | ⬜ (deferred — not a current pain; adds `budgets` collection, no migration) |
 | Budget progress + overspend indicators | M | ⬜ |
-| Filters & search (category, account, date range, title text) | M | ⬜ (Timeline search box + filters still TODO) |
+| Filters & search (category, account, date range, title text) | M | ⚠️ current-month filter bar done (text/category/account/type); cross-history global search still TODO |
 | Data export (CSV / JSON) — delivers "own your data" for real | S | ✅ (Backup: JSON + CSV export/import) |
 
 **Data model impact:** monthly **rollup docs** shipped
