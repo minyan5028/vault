@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { toMinor, toMajor, sumMinor, formatMoney, MINOR_SCALE } from "./money";
+import { toMinor, toMajor, sumMinor, formatMoney, shortMoney, MINOR_SCALE } from "./money";
 
 describe("toMinor", () => {
   it("scales major values by 100", () => {
@@ -64,6 +64,19 @@ describe("formatMoney", () => {
   it("falls back to a plain number + code for an invalid currency (never throws)", () => {
     // "TW" is not a valid ISO 4217 code (should be "TWD") — Intl would throw.
     expect(formatMoney(80000, "TW", "en-US")).toBe("800.00 TW");
+  });
+});
+
+describe("shortMoney", () => {
+  it("groups by 萬/億 in Chinese", () => {
+    expect(shortMoney(67017600, "zh-TW")).toBe("67.0萬"); // 670,176
+    expect(shortMoney(16762300, "zh-TW")).toBe("16.8萬"); // 167,623
+    expect(shortMoney(25000000000, "zh-TW")).toBe("2.5億"); // 250,000,000
+    expect(shortMoney(-500000, "zh-TW")).toBe("−5000");
+  });
+  it("groups by K/M elsewhere", () => {
+    expect(shortMoney(67017600, "en")).toBe("$670K");
+    expect(shortMoney(25000000000, "en")).toBe("$250.0M");
   });
 });
 

@@ -71,6 +71,25 @@ export function formatMoney(
   }
 }
 
+/**
+ * Compact money for tight spots (chart axes, tooltips): `67.0萬` / `$670K`.
+ * Chinese groups by 萬/億 (10^4/10^8); other locales by K/M. Not for precise
+ * figures — it rounds.
+ */
+export function shortMoney(minor: number, locale?: string): string {
+  const major = minor / MINOR_SCALE;
+  const abs = Math.abs(major);
+  const sign = major < 0 ? "−" : "";
+  if ((locale ?? "").startsWith("zh")) {
+    if (abs >= 1e8) return `${sign}${(abs / 1e8).toFixed(1)}億`;
+    if (abs >= 1e4) return `${sign}${(abs / 1e4).toFixed(1)}萬`;
+    return `${sign}${Math.round(abs)}`;
+  }
+  if (abs >= 1e6) return `${sign}$${(abs / 1e6).toFixed(1)}M`;
+  if (abs >= 1e3) return `${sign}$${(abs / 1e3).toFixed(0)}K`;
+  return `${sign}$${Math.round(abs)}`;
+}
+
 function assertMinor(minor: number): void {
   if (!Number.isInteger(minor)) {
     throw new Error(`money: minor amount must be an integer, got ${minor}`);
