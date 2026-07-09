@@ -18,6 +18,7 @@
   "from": "From",
   "to": "To",
   "receivedAmount": "Amount received ({{cur}})",
+  "exchangeRates": "Exchange rates",
   "titlePlaceholder": "What was it? (optional)",
   "note": "Note",
   "addNote": "Add note",

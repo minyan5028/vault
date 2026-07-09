@@ -12,6 +12,7 @@ import {
   increment,
   onSnapshot,
   serverTimestamp,
+  setDoc,
   updateDoc,
   writeBatch,
   type DocumentData,
@@ -145,6 +146,12 @@ export const holdingRepo = {
       (snap) => cb(snap.docs.map(toHolding).sort((a, b) => a.sortOrder - b.sortOrder)),
       (e) => console.error("holdings", e),
     );
+  },
+
+  /** Set one currency's rate into the base currency (TWD). Used by the rate
+   *  editor for foreign accounts that have no holding to price. */
+  setFxRate(ledgerId: string, currency: string, rate: number): Promise<void> {
+    return setDoc(fxRef(ledgerId), { rates: { [currency]: rate } }, { merge: true });
   },
 
   /** Live current FX rates ({ currency: rate-into-base }). */

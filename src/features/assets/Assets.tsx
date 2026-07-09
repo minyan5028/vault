@@ -102,8 +102,16 @@ export function Assets({
                 >
                   {r.account.name}
                 </span>
-                <span className="text-sm tabular-nums text-slate-100">
-                  {formatMoney(r.balance, r.account.currency, locale)}
+                <span className="text-right">
+                  <span className="block text-sm tabular-nums text-slate-100">
+                    {formatMoney(r.balance, r.account.currency, locale)}
+                  </span>
+                  {r.account.currency !== BASE_CURRENCY && (
+                    <span className="block text-xs tabular-nums text-slate-500">
+                      × {fx[r.account.currency] ?? 1} ={" "}
+                      {formatMoney(toBase(r.balance, fx[r.account.currency] ?? 1), BASE_CURRENCY, locale)}
+                    </span>
+                  )}
                 </span>
               </button>
             </li>

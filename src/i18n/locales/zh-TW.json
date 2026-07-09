@@ -18,6 +18,7 @@
   "from": "從",
   "to": "至",
   "receivedAmount": "轉入金額（{{cur}}）",
+  "exchangeRates": "匯率",
   "titlePlaceholder": "這筆是什麼？（選填）",
   "note": "備註",
   "addNote": "新增備註",
