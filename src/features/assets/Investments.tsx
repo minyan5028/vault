@@ -53,6 +53,10 @@ export function Investments({
   const { holdings, fx, snapshots } = useHoldings(ledgerId);
   const active = useMemo(() => holdings.filter((h) => !h.archived), [holdings]);
   const totals = useMemo(() => portfolioTotals(active, fx), [active, fx]);
+  const dividendBase = useMemo(
+    () => active.reduce((s, h) => s + toBase(h.dividendReceived, fx[h.currency] ?? 1), 0),
+    [active, fx],
+  );
   const [panel, setPanel] = useState<"none" | "add" | "update">("none");
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -94,6 +98,14 @@ export function Investments({
         {totals.realizedBase !== 0 && (
           <p className="mt-1 text-right text-xs text-slate-500">
             {t("realizedGain")} <Gain minor={totals.realizedBase} locale={locale} />
+          </p>
+        )}
+        {dividendBase > 0 && (
+          <p className="mt-0.5 text-right text-xs text-slate-500">
+            {t("dividendReceived")}{" "}
+            <span className="tabular-nums text-sky-400">
+              {formatMoney(dividendBase, BASE_CURRENCY, locale)}
+            </span>
           </p>
         )}
 
@@ -566,6 +578,14 @@ function HoldingDetail({
               <Gain minor={holding.realizedGain} currency={holding.currency} locale={locale} />
             </p>
           )}
+          {holding.dividendReceived > 0 && (
+            <p className="mt-0.5 text-right text-xs text-slate-500">
+              {t("dividendReceived")}{" "}
+              <span className="tabular-nums text-sky-400">
+                {formatMoney(holding.dividendReceived, holding.currency, locale)}
+              </span>
+            </p>
+          )}
         </div>
 
         <div className="mt-3 flex gap-2 text-xs">
@@ -642,7 +662,7 @@ function EditHoldingForm({
   onCancel,
 }: {
   holding: Holding;
-  onSave: (patch: Partial<NewHolding>) => Promise<void>;
+  onSave: (patch: Partial<NewHolding & { dividendReceived: number }>) => Promise<void>;
   onArchive: () => Promise<void>;
   onDelete: () => Promise<void>;
   onCancel: () => void;
@@ -653,6 +673,9 @@ function EditHoldingForm({
   const [currency, setCurrency] = useState(holding.currency);
   const [target, setTarget] = useState(holding.targetPrice != null ? fromMinor(holding.targetPrice) : "");
   const [buyDate, setBuyDate] = useState(holding.buyDate ? toDateInputValue(holding.buyDate) : "");
+  const [dividend, setDividend] = useState(
+    holding.dividendReceived ? fromMinor(holding.dividendReceived) : "",
+  );
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -711,6 +734,14 @@ function EditHoldingForm({
           />
         </Field>
       </div>
+      <Field label={`${t("dividendReceived")} (${holding.currency}, ${t("cumulative")})`}>
+        <input
+          className={inputClass}
+          inputMode="decimal"
+          value={dividend}
+          onChange={(e) => setDividend(e.target.value)}
+        />
+      </Field>
       <div className="flex justify-end gap-3 pt-1 text-sm">
         <button type="button" onClick={onCancel} className="text-slate-400">
           {t("cancel")}
@@ -726,6 +757,7 @@ function EditHoldingForm({
               currency: currency.trim() || "TWD",
               targetPrice: target ? toMinor(target) : null,
               buyDate: buyDate ? fromDateInputValue(buyDate) : null,
+              dividendReceived: dividend ? toMinor(dividend) : 0,
             });
           }}
           className="font-medium text-emerald-400 disabled:text-slate-600"

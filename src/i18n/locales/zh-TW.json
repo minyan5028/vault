@@ -102,6 +102,8 @@
   "proceeds": "價金",
   "unrealized": "未實現",
   "realizedGain": "已實現",
+  "dividendReceived": "已收股息",
+  "cumulative": "累計",
   "trades": "交易紀錄",
   "fundingAccount": "付款帳戶",
   "settlementAccount": "收款帳戶",

@@ -9,6 +9,7 @@ import {
   Timestamp,
   collection,
   doc,
+  getDoc,
   getDocs,
   increment,
   onSnapshot,
@@ -135,6 +136,7 @@ function toHolding(s: QueryDocumentSnapshot<DocumentData>): Holding {
     price: d.price ?? 0,
     pricedAt: (d.pricedAt as Timestamp | null)?.toDate() ?? null,
     realizedGain: d.realizedGain ?? 0,
+    dividendReceived: d.dividendReceived ?? 0,
     targetPrice: d.targetPrice ?? null,
     buyDate: (d.buyDate as Timestamp | null)?.toDate() ?? null,
     archived: d.archived ?? false,
@@ -157,10 +159,29 @@ export const holdingRepo = {
     );
   },
 
-  /** Set one currency's rate into the base currency (TWD). Used by the rate
-   *  editor for foreign accounts that have no holding to price. */
+  /** Set one currency's rate into the base currency (TWD), from the manual rate
+   *  editor. Stamps updatedAt so the weekly auto-refresh backs off. */
   setFxRate(ledgerId: string, currency: string, rate: number): Promise<void> {
-    return setDoc(fxRef(ledgerId), { rates: { [currency]: rate } }, { merge: true });
+    return setDoc(
+      fxRef(ledgerId),
+      { rates: { [currency]: rate }, updatedAt: serverTimestamp() },
+      { merge: true },
+    );
+  },
+
+  /** Merge several rates at once (the weekly API auto-refresh). */
+  setFxRates(ledgerId: string, rates: Record<string, number>): Promise<void> {
+    return setDoc(fxRef(ledgerId), { rates, updatedAt: serverTimestamp() }, { merge: true });
+  },
+
+  /** Read current rates + when they were last set (millis, or null if never). */
+  async getFxMeta(ledgerId: string): Promise<{ rates: Record<string, number>; updatedAt: number | null }> {
+    const snap = await getDoc(fxRef(ledgerId));
+    const d = snap.data();
+    return {
+      rates: (d?.rates as Record<string, number>) ?? {},
+      updatedAt: (d?.updatedAt as Timestamp | undefined)?.toMillis() ?? null,
+    };
   },
 
   /** Live current FX rates ({ currency: rate-into-base }). */
@@ -194,6 +215,7 @@ export const holdingRepo = {
     batch.set(ref, {
       ...rest,
       realizedGain: 0,
+      dividendReceived: 0,
       buyDate: buyDate ? Timestamp.fromDate(buyDate) : null,
       pricedAt: serverTimestamp(),
       archived: false,
@@ -260,7 +282,11 @@ export const holdingRepo = {
     );
   },
 
-  update(ledgerId: string, id: string, patch: Partial<NewHolding & { archived: boolean }>) {
+  update(
+    ledgerId: string,
+    id: string,
+    patch: Partial<NewHolding & { archived: boolean; dividendReceived: number }>,
+  ) {
     return updateDoc(doc(holdingsCol(ledgerId), id), patch);
   },
 

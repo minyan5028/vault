@@ -157,6 +157,10 @@ export interface Holding {
   /** Cumulative realized gain from sells (×100, holding currency): for each
    *  sell, proceeds − (average cost × shares sold). Unaffected by price moves. */
   realizedGain: number;
+  /** Cumulative dividends received (×100, holding currency). Reinvested (DRIP)
+   *  so already reflected in `shares`/value — kept separately for reference
+   *  only; NOT added to cost or net worth. A running total the user maintains. */
+  dividendReceived: number;
   /** Optional price threshold that flags a holding for re-evaluation (×100). */
   targetPrice: number | null;
   /** When the position was first opened (the initial buy). */

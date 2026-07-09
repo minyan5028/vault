@@ -7,6 +7,7 @@ import { provisionPersonalLedger } from "./data/provisionLedger";
 import { transactionRepo } from "./data/transactionRepo";
 import { materializeRecurring } from "./data/materializeRecurring";
 import { useLedgerData } from "./data/useLedgerData";
+import { useFxAutoRefresh } from "./data/useFxAutoRefresh";
 import { useUserLedgers } from "./data/useUserLedgers";
 import { useMyInvites } from "./data/useMyInvites";
 import { ledgerRepo } from "./data/ledgerRepo";
@@ -53,6 +54,7 @@ function AuthedApp({ user }: { user: User }) {
   );
   const activeLedger = ledgers.find((l) => l.id === ledgerId);
   const { accounts, categories } = useLedgerData(ready ? ledgerId : "");
+  useFxAutoRefresh(ready ? ledgerId : "", accounts);
   const myProfile = useMemo(
     () => ({ name: user.displayName ?? "", email: user.email ?? "" }),
     [user.displayName, user.email],
