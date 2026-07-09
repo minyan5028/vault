@@ -200,8 +200,9 @@ Represents a Financial Event.
 | Field        | Type             | Description                                      |
 | ------------ | ---------------- | ------------------------------------------------ |
 | type         | string           | expense / income / transfer / future event types |
-| amount       | integer          | Original amount ×100                             |
+| amount       | integer          | Original amount ×100 (debited from `accountId`)  |
 | currency     | string           | Original currency                                |
+| toAmount     | integer          | Amount credited to `toAccountId` in its own currency; differs from `amount` only on a cross-currency transfer, else equals it |
 | baseAmount   | integer          | Converted amount in ledger currency              |
 | baseCurrency | string           | Ledger currency                                  |
 | fxRate       | number           | Exchange rate captured at entry                  |
@@ -217,6 +218,46 @@ Represents a Financial Event.
 | updatedAt    | timestamp        | Server timestamp                                 |
 | deletedAt    | timestamp | null | Soft delete                                      |
 | source       | string | null    | Provenance, e.g. `"notion-import"` (optional)    |
+
+---
+
+## holdings/{holdingId}
+
+A market-valued position (stock, ETF, forex) whose worth is set by the market,
+not derived from cash-flow events. Buy-and-hold with periodic snapshots; DRIP
+grows `shares`. Cost basis follows the **average-cost** method.
+
+| Field        | Type    | Description                                        |
+| ------------ | ------- | -------------------------------------------------- |
+| ticker       | string  | Symbol                                             |
+| class        | string  | `growth` / `dividend`                              |
+| currency     | string  | The holding's own currency                         |
+| cost         | integer | Cost basis of the shares held ×100                 |
+| shares       | integer | ×10000 (4 dp; fractional from DRIP)                |
+| price        | integer | Latest price ×100 (denormalized from a snapshot)   |
+| realizedGain | integer | Cumulative realized gain from sells ×100           |
+| targetPrice  | integer | null | Optional re-evaluation threshold ×100       |
+| buyDate      | timestamp | null | When first opened                          |
+| archived     | boolean | Hidden but preserved                               |
+
+A buy debits a cash account into the holding, a sell moves proceeds back — both
+recorded as `transfer` transactions, so the holding's id acts as a (non-listed)
+transfer endpoint and net worth never double-counts deposited cash + value.
+
+### holdings/{holdingId}/trades/{tradeId}
+
+Append-only buy/sell log: `kind` (buy/sell), `date`, `shares`, `price`,
+`amount` (cash moved), `realized` (0 for a buy).
+
+## snapshots/{date}
+
+A portfolio valuation on one date: `{ date, entries: { holdingId: { price,
+shares } }, fx }`. Partial (per-currency) updates merge into the same date.
+
+## meta/fx
+
+Current exchange rates: `{ rates: { currency: rate-into-TWD } }`. Used to value
+foreign accounts and holdings into the base currency for net worth.
 
 ---
 
@@ -271,6 +312,21 @@ TWD 3,536.00
 Reports always aggregate `baseAmount`.
 
 Historical totals never change when exchange rates move.
+
+## Multi-currency accounts
+
+An account holds one currency; its **balance is in that currency**, accumulated
+from `amount` (source leg) and `toAmount` (destination leg) — not `baseAmount`.
+A cross-currency transfer moves `amount` out of the source and `toAmount` into
+the destination (two different figures + the rate).
+
+Two FX regimes coexist deliberately:
+
+* **Income/expense stats** aggregate `baseAmount`, the rate **locked at entry**
+  (ADR-0002) — history stays deterministic.
+* **Net worth** values each account/holding balance at the **current** rate
+  from `meta/fx` — it reflects today's market. A foreign balance therefore
+  shows e.g. `US$2,145.44 × 32 = NT$68,654.08`.
 
 ---
 
@@ -429,11 +485,10 @@ Examples include:
 
 * Attachments (Firebase Storage)
 * Tags
-* Investment holdings
-* Asset lots
-* Market price snapshots
+* Buy lots (per-lot cost basis, superseding today's average-cost method)
 
-Existing Financial Events remain unchanged.
+Investment holdings, trades, price snapshots and multi-currency accounts are now
+implemented (see the schemas above). Existing Financial Events remain unchanged.
 
 ---
 
