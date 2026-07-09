@@ -236,6 +236,7 @@ grows `shares`. Cost basis follows the **average-cost** method.
 | shares       | integer | ×10000 (4 dp; fractional from DRIP)                |
 | price        | integer | Latest price ×100 (denormalized from a snapshot)   |
 | realizedGain | integer | Cumulative realized gain from sells ×100           |
+| dividendReceived | integer | Cumulative dividends received ×100 — reference only (reinvested, so already in shares; not in cost or net worth) |
 | targetPrice  | integer | null | Optional re-evaluation threshold ×100       |
 | buyDate      | timestamp | null | When first opened                          |
 | archived     | boolean | Hidden but preserved                               |
@@ -256,8 +257,16 @@ shares } }, fx }`. Partial (per-currency) updates merge into the same date.
 
 ## meta/fx
 
-Current exchange rates: `{ rates: { currency: rate-into-TWD } }`. Used to value
-foreign accounts and holdings into the base currency for net worth.
+Current exchange rates + when they were last set:
+`{ rates: { currency: rate-into-TWD }, updatedAt: timestamp }`. Used **only** to
+value foreign accounts/holdings into the base currency for net worth —
+historical transactions keep their entry-locked fxRate (ADR-0002).
+
+Rates come from the manual editor (Manage → Exchange rates) or a **weekly
+auto-refresh**: on app load, if `updatedAt` is before the current week's Monday
+midnight, the app fetches current rates for the in-use foreign currencies from a
+free public API (open.er-api.com) and updates them. Client-triggered (Vault has
+no backend), so the fetch lands the first app-open each week (~Mon/Tue).
 
 ---
 

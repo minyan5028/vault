@@ -144,31 +144,38 @@ this month?" at a glance.
 
 ---
 
-## Phase 4 — Asset & Investment Management
+## Phase 4 — Asset & Investment Management ✅ (mostly done)
 
 **Goal:** track net worth, not just cash flow — including US stocks.
 
-| Deliverable | Size |
-|-------------|------|
-| Accounts carry balances (assets & liabilities), manual snapshots | M |
-| **Buy lots**: record when / at what price / which stock / how many shares | M |
-| Periodic **price + quantity snapshots** (user updates every ~2–3 months) | M |
-| **Sells** with cost-basis handling (lot-based) | M |
-| Returns: **growth-stock vs dividend-stock** calculations | M |
-| Dividend income records | S |
-| Foreign holdings valued via `baseAmount` / FX into TWD | M |
-| Net worth over time | M |
-| Price updates — manual first, market-data API later | M |
+| Deliverable | Status |
+|-------------|--------|
+| Accounts carry balances, manual snapshots | ✅ |
+| Record buys: when / price / stock / shares | ✅ |
+| Periodic **price + quantity snapshots** (grouped by currency) | ✅ |
+| **Sells** with cost-basis handling | ✅ **average-cost** (not per-lot) |
+| Returns: **growth vs dividend** split | ✅ |
+| Dividend records | ✅ `dividendReceived` (running total, reference) |
+| Foreign holdings valued via FX into TWD | ✅ multi-currency accounts (ADR-0007) |
+| Net worth over time | ✅ value-trend chart from snapshots |
+| Price updates — manual | ✅ manual; market-data **stock-price** API still future |
+| Weekly FX auto-refresh (Monday-anchored) | ✅ open.er-api.com (net worth only) |
 
-**Data model impact (Phase 4 only — no MVP impact):** new `holdings` /
-`lots` / price-`snapshots` collections. A buy is two things: a **lot** (shares
-at cost) *and* a normal **cash transaction** (the money out) — the existing
-transaction model already handles the cash side. Quantities/prices reuse the
-×100 rule (2 decimals; qty×price may not reconcile to the cent — accepted).
-Detailed schema to be designed at Phase 4; captured here so it isn't lost.
+**Cost basis:** chose **average-cost** over per-lot — Taiwan taxes overseas
+stocks as aggregate foreign income (no lot-level basis needed), so lots add
+complexity without benefit. Per-lot (FIFO) remains a possible future refinement.
 
-**Definition of done:** see total net worth including US stocks, in TWD, with
-per-holding return split into growth vs dividend.
+**Data model (implemented — see DATA_MODEL.md + ADR-0007):** `holdings` /
+`holdings/{id}/trades` / `snapshots` / `meta/fx` collections; accounts became
+multi-currency (per-currency balances via `amount`/`toAmount`; net worth uses
+live FX, stats keep entry-locked FX). A buy/sell is a `transfer` between a cash
+account and the holding, so the cash side reuses the existing model.
+
+**Definition of done:** ✅ total net worth including US/JP holdings in TWD, with
+per-holding growth/dividend return, realized gain, dividends, and a value trend.
+
+**Still future:** stock-price API (auto price updates → richer auto trend);
+per-lot cost basis.
 
 ---
 
