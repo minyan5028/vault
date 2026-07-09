@@ -61,6 +61,10 @@ describe("formatMoney", () => {
     // JPY: stored 1,600,000 → ¥16,000 with no decimals
     expect(formatMoney(1600000, "JPY", "en-US")).toBe("¥16,000");
   });
+  it("falls back to a plain number + code for an invalid currency (never throws)", () => {
+    // "TW" is not a valid ISO 4217 code (should be "TWD") — Intl would throw.
+    expect(formatMoney(80000, "TW", "en-US")).toBe("800.00 TW");
+  });
 });
 
 describe("MINOR_SCALE", () => {

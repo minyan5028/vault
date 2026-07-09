@@ -118,3 +118,80 @@ export interface Transaction {
   deletedAt: Date | null;
   source?: string | null;
 }
+
+/** How a holding earns, mirroring the user's own grow/dividend split. */
+export type HoldingClass = "growth" | "dividend";
+
+/**
+ * A market-valued position (stock, forex, etc.) — an account whose worth is set
+ * by the market, not derived from cash-flow events (see docs/DATA_MODEL.md).
+ * Buy-and-hold with periodic snapshots; DRIP means `shares` grows over time.
+ *
+ * Money fields (`cost`, `price`) are ×100 integer minor units in `currency`.
+ * `shares` is ×10000 (4 decimals) — DRIP produces fractional shares. Market
+ * value = shares × price; qty×price may not reconcile to the cent (accepted).
+ * `price`/`shares`/`pricedAt` denormalize the latest snapshot for quick display.
+ */
+export interface Holding {
+  id: string;
+  ticker: string;
+  name: string | null;
+  class: HoldingClass;
+  currency: string;
+  /** Cost basis of the shares currently held (×100), maintained on the
+   *  average-cost method: a buy adds cash paid; a sell removes shares × the
+   *  average cost per share. */
+  cost: number;
+  shares: number;
+  price: number;
+  pricedAt: Date | null;
+  /** Cumulative realized gain from sells (×100, holding currency): for each
+   *  sell, proceeds − (average cost × shares sold). Unaffected by price moves. */
+  realizedGain: number;
+  /** Optional price threshold that flags a holding for re-evaluation (×100). */
+  targetPrice: number | null;
+  /** When the position was first opened (the initial buy). */
+  buyDate: Date | null;
+  archived: boolean;
+  sortOrder: number;
+}
+
+/** A buy or sell of a holding. */
+export type TradeKind = "buy" | "sell";
+
+/**
+ * One recorded buy or sell against a holding, kept as an append-only log at
+ * `ledgers/{id}/holdings/{hid}/trades/{tid}` for faithful history. The running
+ * shares/cost/realizedGain on the Holding are the aggregate of these.
+ */
+export interface Trade {
+  id: string;
+  kind: TradeKind;
+  date: Date;
+  /** Shares transacted (×10000). */
+  shares: number;
+  /** Per-share price (×100, holding currency). */
+  price: number;
+  /** Cash moved (×100): a buy's cost paid, a sell's proceeds received. */
+  amount: number;
+  /** Realized gain for a sell (×100); 0 for a buy. */
+  realized: number;
+}
+
+/** One valuation entry within a snapshot: a holding's price + share count then. */
+export interface SnapshotEntry {
+  price: number;
+  shares: number;
+}
+
+/**
+ * A portfolio valuation on one date (like a column in the user's spreadsheet):
+ * every holding's price + shares, plus the FX rates used to value non-base
+ * holdings into the base currency. Stored at `ledgers/{id}/snapshots/{date}`.
+ * `fx` maps a currency to its rate into the ledger base currency (TWD).
+ */
+export interface PortfolioSnapshot {
+  date: string;
+  entries: Record<string, SnapshotEntry>;
+  fx: Record<string, number>;
+}

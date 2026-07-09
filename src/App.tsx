@@ -173,6 +173,7 @@ function AuthedApp({ user }: { user: User }) {
         <Assets
           ledgerId={ledgerId}
           accounts={accounts}
+          uid={user.uid}
           onOpenAccount={(account, balance) => setAccountView({ account, balance })}
         />
       )}

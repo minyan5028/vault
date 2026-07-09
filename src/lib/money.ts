@@ -42,16 +42,29 @@ export function sumMinor(amounts: readonly number[]): number {
  * Format a stored minor amount for display in its currency.
  * Intl applies each currency's own decimal rule (TWD/USD → 2 places, JPY → 0),
  * so ¥ shows no decimals even though it is stored ×100.
+ *
+ * An invalid/unknown currency code (e.g. a typo like "TW" instead of "TWD")
+ * makes Intl throw a RangeError. We must never let that crash a render, so we
+ * fall back to a plain number with the raw code appended.
  */
 export function formatMoney(
   minor: number,
   currency: string,
   locale?: string,
 ): string {
-  return new Intl.NumberFormat(locale, {
-    style: "currency",
-    currency,
-  }).format(toMajor(minor));
+  const major = toMajor(minor);
+  try {
+    return new Intl.NumberFormat(locale, {
+      style: "currency",
+      currency,
+    }).format(major);
+  } catch {
+    const amount = new Intl.NumberFormat(locale, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(major);
+    return `${amount} ${currency}`;
+  }
 }
 
 function assertMinor(minor: number): void {

@@ -24,6 +24,7 @@ import {
   type DocumentData,
   type QueryDocumentSnapshot,
   type Unsubscribe,
+  type WriteBatch,
 } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { yearMonthOf } from "../lib/date";
@@ -149,6 +150,29 @@ function sortActive(docs: QueryDocumentSnapshot<DocumentData>[]): Transaction[] 
     .map(fromSnapshot)
     .filter((t) => t.deletedAt === null)
     .sort(cmpDesc);
+}
+
+/**
+ * Append a transfer Financial Event to an existing batch and bump the balance
+ * rollup, so a holding buy/sell and its cash leg commit atomically (see
+ * holdingRepo). Transfers contribute nothing to the month income/expense
+ * rollup, so only the balance rollup is touched.
+ */
+export function writeTransferToBatch(
+  batch: WriteBatch,
+  ledgerId: string,
+  input: NewTransactionInput,
+): void {
+  const ref = doc(transactionsCol(ledgerId));
+  batch.set(ref, {
+    ...input,
+    date: Timestamp.fromDate(input.date),
+    yearMonth: yearMonthOf(input.date),
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    deletedAt: null,
+  });
+  batch.set(rollupRef(ledgerId), rollupDelta(accountDeltas(input, 1)), { merge: true });
 }
 
 export const transactionRepo = {
