@@ -109,7 +109,7 @@ export function Investments({
           </p>
         )}
 
-        <ValueTrend snapshots={snapshots} holdings={holdings} locale={locale} />
+        <ValueTrend snapshots={snapshots} holdings={holdings} fx={fx} locale={locale} />
 
         <div className="mt-3 flex gap-2 text-xs">
           <button
@@ -206,17 +206,20 @@ export function Investments({
 function ValueTrend({
   snapshots,
   holdings,
+  fx,
   locale,
 }: {
   snapshots: PortfolioSnapshot[];
   holdings: Holding[];
+  fx: Record<string, number>;
   locale: string;
 }) {
   const { t } = useTranslation();
   const [hover, setHover] = useState<number | null>(null);
   const points = useMemo(() => {
     const curOf = Object.fromEntries(holdings.map((h) => [h.id, h.currency]));
-    return snapshots.map((s) => {
+    // Historical points: each valued at that snapshot's own stored FX.
+    const pts = snapshots.map((s) => {
       let value = 0;
       for (const [hid, e] of Object.entries(s.entries)) {
         const cur = curOf[hid] ?? BASE_CURRENCY;
@@ -224,7 +227,21 @@ function ValueTrend({
       }
       return { date: s.date, value };
     });
-  }, [snapshots, holdings]);
+    // Live "today" point: current shares/price at the current rate, so the tail
+    // always equals the Investments page total (and moves as FX/prices update).
+    let nowValue = 0;
+    for (const h of holdings) {
+      if (h.archived) continue;
+      nowValue += toBase(marketValue(h.shares, h.price), fx[h.currency] ?? 1);
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    if (pts.length > 0 && pts[pts.length - 1].date === today) {
+      pts[pts.length - 1] = { date: today, value: nowValue };
+    } else {
+      pts.push({ date: today, value: nowValue });
+    }
+    return pts;
+  }, [snapshots, holdings, fx]);
 
   if (points.length < 2) return null;
 

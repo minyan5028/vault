@@ -3,14 +3,23 @@ import { holdingRepo } from "./holdingRepo";
 import { fetchRatesIntoTwd } from "../lib/fxApi";
 import type { Account } from "../domain/types";
 
-const WEEK = 7 * 24 * 3600 * 1000;
+/** Local-time midnight of the most recent Monday (start of the current week). */
+function thisMondayMidnight(now: number): number {
+  const d = new Date(now);
+  const daysSinceMonday = (d.getDay() + 6) % 7; // Mon→0, Tue→1, … Sun→6
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - daysSinceMonday);
+  return d.getTime();
+}
 
 /**
- * Once per app load, refresh foreign-currency rates into `meta/fx` if they're
- * over a week old. Client-triggered because Vault has no backend — effectively
- * a weekly update (you open the app about that often). Only the non-TWD
- * currencies actually in use are fetched, and only net-worth valuation is
- * affected (historical transactions keep their entry-locked fxRate, ADR-0002).
+ * Refresh foreign-currency rates into `meta/fx` once per week, anchored to
+ * Monday. On app load, if rates haven't been fetched since this week's Monday
+ * midnight, fetch now — so the fetch lands the first time you open the app each
+ * week (typically Mon/Tue) and doesn't drift later week over week. Client-
+ * triggered because Vault has no backend. Only the non-TWD currencies in use
+ * are fetched, and only net-worth valuation is affected (historical
+ * transactions keep their entry-locked fxRate, ADR-0002).
  */
 export function useFxAutoRefresh(ledgerId: string, accounts: Account[]): void {
   const foreignKey = [...new Set(accounts.map((a) => a.currency))]
@@ -24,7 +33,8 @@ export function useFxAutoRefresh(ledgerId: string, accounts: Account[]): void {
     let cancelled = false;
     (async () => {
       const meta = await holdingRepo.getFxMeta(ledgerId);
-      if (meta.updatedAt != null && Date.now() - meta.updatedAt < WEEK) return; // still fresh
+      // Already fetched this week (since Monday)? Skip.
+      if (meta.updatedAt != null && meta.updatedAt >= thisMondayMidnight(Date.now())) return;
       const rates = await fetchRatesIntoTwd(currencies);
       if (!cancelled && Object.keys(rates).length > 0) {
         await holdingRepo.setFxRates(ledgerId, rates);
