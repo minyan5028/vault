@@ -192,6 +192,44 @@ export function writeTransferToBatch(
   batch.set(rollupRef(ledgerId), rollupDelta(accountDeltas(input, 1)), { merge: true });
 }
 
+/**
+ * Signed balance-rollup delta for one transaction (per-account minor units).
+ * Used when deleting a holding to reverse its paired cash legs. Callers must
+ * combine deltas across transactions and write the rollup once (a batch can't
+ * increment the same doc twice), via `commitBalanceDelta`.
+ */
+export function transferBalanceDelta(
+  txData: {
+    type: EventType;
+    accountId: string;
+    toAccountId: string | null;
+    amount: number;
+    toAmount?: number;
+  },
+  sign: 1 | -1,
+): Record<string, number> {
+  return accountDeltas(txData, sign);
+}
+
+/** Soft-delete a transaction within a batch (no rollup change — caller nets the
+ *  balance deltas and applies them once with `commitBalanceDelta`). */
+export function softDeleteInBatch(batch: WriteBatch, ledgerId: string, txId: string): void {
+  batch.update(doc(transactionsCol(ledgerId), txId), {
+    deletedAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/** Apply a combined balance delta to the rollup within a batch (one write). */
+export function commitBalanceDelta(
+  batch: WriteBatch,
+  ledgerId: string,
+  deltas: Record<string, number>,
+): void {
+  if (Object.keys(deltas).length > 0)
+    batch.set(rollupRef(ledgerId), rollupDelta(deltas), { merge: true });
+}
+
 export const transactionRepo = {
   /** Record a Financial Event and bump the rollup. Returns the new id. */
   async add(ledgerId: string, input: NewTransactionInput): Promise<string> {

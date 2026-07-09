@@ -9,11 +9,14 @@ import {
   Timestamp,
   collection,
   doc,
+  getDocs,
   increment,
   onSnapshot,
+  query,
   serverTimestamp,
   setDoc,
   updateDoc,
+  where,
   writeBatch,
   type DocumentData,
   type QueryDocumentSnapshot,
@@ -22,7 +25,13 @@ import {
 import { db } from "../lib/firebase";
 import { fromDateInputValue } from "../lib/date";
 import { applySell } from "../lib/holdings";
-import { writeTransferToBatch, type NewTransactionInput } from "./transactionRepo";
+import {
+  writeTransferToBatch,
+  softDeleteInBatch,
+  transferBalanceDelta,
+  commitBalanceDelta,
+  type NewTransactionInput,
+} from "./transactionRepo";
 import type { Holding, PortfolioSnapshot, SnapshotEntry, Trade, TradeKind } from "../domain/types";
 
 const holdingsCol = (ledgerId: string) => collection(db, "ledgers", ledgerId, "holdings");
@@ -253,6 +262,43 @@ export const holdingRepo = {
 
   update(ledgerId: string, id: string, patch: Partial<NewHolding & { archived: boolean }>) {
     return updateDoc(doc(holdingsCol(ledgerId), id), patch);
+  },
+
+  /**
+   * Delete a holding entirely: soft-delete every paired cash transfer (undoing
+   * their effect on the funding accounts), then hard-delete the holding doc and
+   * its trades. The balance rollup is reversed once, netted across all legs.
+   * Use for a mis-entered holding; prefer archiving to keep history.
+   */
+  async remove(ledgerId: string, holding: Holding): Promise<void> {
+    const txCol = collection(db, "ledgers", ledgerId, "transactions");
+    const [asDest, asSrc] = await Promise.all([
+      getDocs(query(txCol, where("toAccountId", "==", holding.id))),
+      getDocs(query(txCol, where("accountId", "==", holding.id))),
+    ]);
+    const batch = writeBatch(db);
+    const combined: Record<string, number> = {};
+    for (const snap of [...asDest.docs, ...asSrc.docs]) {
+      const d = snap.data();
+      if (d.deletedAt) continue;
+      softDeleteInBatch(batch, ledgerId, snap.id);
+      const delta = transferBalanceDelta(
+        {
+          type: d.type,
+          accountId: d.accountId,
+          toAccountId: d.toAccountId ?? null,
+          amount: d.amount,
+          toAmount: d.toAmount,
+        },
+        -1,
+      );
+      for (const [acc, v] of Object.entries(delta)) combined[acc] = (combined[acc] ?? 0) + v;
+    }
+    commitBalanceDelta(batch, ledgerId, combined);
+    const trades = await getDocs(tradesCol(ledgerId, holding.id));
+    for (const t of trades.docs) batch.delete(t.ref);
+    batch.delete(doc(holdingsCol(ledgerId), holding.id));
+    await batch.commit();
   },
 
   /**

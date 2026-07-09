@@ -2,13 +2,14 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { formatMoney, CURRENCIES } from "../../lib/money";
 import { toDateInputValue, fromDateInputValue } from "../../lib/date";
-import { valueHolding, portfolioTotals, applySell } from "../../lib/holdings";
+import { valueHolding, portfolioTotals, applySell, marketValue, toBase } from "../../lib/holdings";
 import { holdingRepo, type NewHolding, type TradeInput } from "../../data/holdingRepo";
 import { useHoldings } from "../../data/useHoldings";
 import type {
   Account,
   Holding,
   HoldingClass,
+  PortfolioSnapshot,
   SnapshotEntry,
   Trade,
   TradeKind,
@@ -49,7 +50,7 @@ export function Investments({
 }) {
   const { t, i18n } = useTranslation();
   const locale = i18n.language;
-  const { holdings, fx } = useHoldings(ledgerId);
+  const { holdings, fx, snapshots } = useHoldings(ledgerId);
   const active = useMemo(() => holdings.filter((h) => !h.archived), [holdings]);
   const totals = useMemo(() => portfolioTotals(active, fx), [active, fx]);
   const [panel, setPanel] = useState<"none" | "add" | "update">("none");
@@ -95,6 +96,8 @@ export function Investments({
             {t("realizedGain")} <Gain minor={totals.realizedBase} locale={locale} />
           </p>
         )}
+
+        <ValueTrend snapshots={snapshots} holdings={holdings} locale={locale} />
 
         <div className="mt-3 flex gap-2 text-xs">
           <button
@@ -183,6 +186,78 @@ export function Investments({
         )}
       </div>
     </main>
+  );
+}
+
+/** Portfolio market-value trend from valuation snapshots (each point valued at
+ *  that snapshot's own prices + FX). A simple SVG line; hidden below 2 points. */
+function ValueTrend({
+  snapshots,
+  holdings,
+  locale,
+}: {
+  snapshots: PortfolioSnapshot[];
+  holdings: Holding[];
+  locale: string;
+}) {
+  const { t } = useTranslation();
+  const points = useMemo(() => {
+    const curOf = Object.fromEntries(holdings.map((h) => [h.id, h.currency]));
+    return snapshots.map((s) => {
+      let value = 0;
+      for (const [hid, e] of Object.entries(s.entries)) {
+        const cur = curOf[hid] ?? BASE_CURRENCY;
+        value += toBase(marketValue(e.shares, e.price), s.fx[cur] ?? 1);
+      }
+      return { date: s.date, value };
+    });
+  }, [snapshots, holdings]);
+
+  if (points.length < 2) return null;
+
+  const values = points.map((p) => p.value);
+  const min = Math.min(...values);
+  const range = Math.max(...values) - min || 1;
+  const W = 300;
+  const H = 56;
+  const coords = points
+    .map((p, i) => {
+      const x = (i / (points.length - 1)) * W;
+      const y = H - ((p.value - min) / range) * H;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+  const change = points[points.length - 1].value - points[0].value;
+  const color = change >= 0 ? "text-emerald-400" : "text-rose-400";
+
+  return (
+    <div className="mt-3">
+      <p className="mb-1 text-xs uppercase tracking-wide text-slate-500">{t("valueTrend")}</p>
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        preserveAspectRatio="none"
+        className={"h-14 w-full " + color}
+        aria-hidden
+      >
+        <polyline
+          points={coords}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          strokeLinejoin="round"
+          strokeLinecap="round"
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
+      <div className="mt-1 flex justify-between text-xs text-slate-500">
+        <span>{points[0].date}</span>
+        <span className={color}>
+          {change >= 0 ? "+" : "−"}
+          {formatMoney(Math.abs(change), BASE_CURRENCY, locale)}
+        </span>
+        <span>{points[points.length - 1].date}</span>
+      </div>
+    </div>
   );
 }
 
@@ -398,7 +473,7 @@ function HoldingDetail({
   const { t, i18n } = useTranslation();
   const locale = i18n.language;
   const v = valueHolding(holding, fx);
-  const [action, setAction] = useState<"none" | "buy" | "sell">("none");
+  const [action, setAction] = useState<"none" | "buy" | "sell" | "edit">("none");
 
   return (
     <main className="min-h-dvh bg-slate-900 text-slate-100">
@@ -451,9 +526,16 @@ function HoldingDetail({
           >
             {t("sell")}
           </button>
+          <button
+            type="button"
+            onClick={() => setAction(action === "edit" ? "none" : "edit")}
+            className="ml-auto rounded-full bg-slate-800 px-3 py-1 text-slate-400"
+          >
+            {t("edit")}
+          </button>
         </div>
 
-        {action !== "none" && (
+        {(action === "buy" || action === "sell") && (
           <TradeForm
             kind={action}
             holding={holding}
@@ -467,10 +549,165 @@ function HoldingDetail({
             }}
           />
         )}
+        {action === "edit" && (
+          <EditHoldingForm
+            holding={holding}
+            onCancel={() => setAction("none")}
+            onSave={async (patch) => {
+              await holdingRepo.update(ledgerId, holding.id, patch);
+              setAction("none");
+            }}
+            onArchive={async () => {
+              await holdingRepo.update(ledgerId, holding.id, { archived: true });
+              onBack();
+            }}
+            onDelete={async () => {
+              await holdingRepo.remove(ledgerId, holding);
+              onBack();
+            }}
+          />
+        )}
 
         <TradeLog ledgerId={ledgerId} holding={holding} locale={locale} />
       </div>
     </main>
+  );
+}
+
+/** Edit a holding's descriptive fields (not shares/cost/price — those come from
+ *  trades), plus archive or delete it. Delete undoes the paired cash transfers. */
+function EditHoldingForm({
+  holding,
+  onSave,
+  onArchive,
+  onDelete,
+  onCancel,
+}: {
+  holding: Holding;
+  onSave: (patch: Partial<NewHolding>) => Promise<void>;
+  onArchive: () => Promise<void>;
+  onDelete: () => Promise<void>;
+  onCancel: () => void;
+}) {
+  const { t } = useTranslation();
+  const [ticker, setTicker] = useState(holding.ticker);
+  const [cls, setCls] = useState<HoldingClass>(holding.class);
+  const [currency, setCurrency] = useState(holding.currency);
+  const [target, setTarget] = useState(holding.targetPrice != null ? fromMinor(holding.targetPrice) : "");
+  const [buyDate, setBuyDate] = useState(holding.buyDate ? toDateInputValue(holding.buyDate) : "");
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  return (
+    <div className="mt-3 space-y-2 rounded-lg bg-slate-800/40 p-3">
+      <Field label={t("ticker")}>
+        <input
+          className={inputClass}
+          value={ticker}
+          onChange={(e) => setTicker(e.target.value.toUpperCase())}
+        />
+      </Field>
+      <div className="flex gap-2">
+        <Field label={t("category")}>
+          <select
+            className={inputClass}
+            value={cls}
+            onChange={(e) => setCls(e.target.value as HoldingClass)}
+          >
+            {CLASSES.map((c) => (
+              <option key={c} value={c}>
+                {t(`class_${c}`)}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label={t("currency")}>
+          <select
+            className={inputClass}
+            value={currency}
+            onChange={(e) => setCurrency(e.target.value)}
+          >
+            {CURRENCIES.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </div>
+      <div className="flex gap-2">
+        <Field label={t("targetPrice")}>
+          <input
+            className={inputClass}
+            inputMode="decimal"
+            value={target}
+            onChange={(e) => setTarget(e.target.value)}
+          />
+        </Field>
+        <Field label={t("buyDate")}>
+          <input
+            type="date"
+            className={inputClass}
+            value={buyDate}
+            onChange={(e) => setBuyDate(e.target.value)}
+          />
+        </Field>
+      </div>
+      <div className="flex justify-end gap-3 pt-1 text-sm">
+        <button type="button" onClick={onCancel} className="text-slate-400">
+          {t("cancel")}
+        </button>
+        <button
+          type="button"
+          disabled={busy || ticker.trim() === ""}
+          onClick={async () => {
+            setBusy(true);
+            await onSave({
+              ticker: ticker.trim(),
+              class: cls,
+              currency: currency.trim() || "TWD",
+              targetPrice: target ? toMinor(target) : null,
+              buyDate: buyDate ? fromDateInputValue(buyDate) : null,
+            });
+          }}
+          className="font-medium text-emerald-400 disabled:text-slate-600"
+        >
+          {t("save")}
+        </button>
+      </div>
+
+      {/* Archive / delete */}
+      <div className="mt-2 flex items-center justify-between border-t border-slate-800 pt-2 text-xs">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            await onArchive();
+          }}
+          className="text-slate-400"
+        >
+          {t("archive")}
+        </button>
+        {confirmDelete ? (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              await onDelete();
+            }}
+            className="font-medium text-rose-400"
+          >
+            {t("confirmDelete")}
+          </button>
+        ) : (
+          <button type="button" onClick={() => setConfirmDelete(true)} className="text-rose-400">
+            {t("delete")}
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 
