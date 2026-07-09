@@ -102,6 +102,15 @@ export interface Transaction {
   type: EventType;
   amount: number;
   currency: string;
+  /**
+   * For a cross-currency transfer, the amount credited to `toAccountId` in the
+   * destination account's own currency (minor units) — it differs from `amount`
+   * (debited from `accountId` in its currency). For same-currency transfers and
+   * all income/expense, this equals `amount`. Account balances use amount /
+   * toAmount (each account in its own currency); `baseAmount` stays the TWD
+   * snapshot for income/expense stats (ADR-0002).
+   */
+  toAmount: number;
   baseAmount: number;
   baseCurrency: string;
   fxRate: number;

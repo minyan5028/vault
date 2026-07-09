@@ -35,6 +35,9 @@ export interface NewTransactionInput {
   type: EventType;
   amount: number;
   currency: string;
+  /** Cross-currency transfer only: amount credited to toAccountId in its
+   *  currency. Omit for same-currency / income / expense (defaults to amount). */
+  toAmount?: number;
   baseAmount: number;
   baseCurrency: string;
   fxRate: number;
@@ -66,20 +69,32 @@ const monthRollupRef = (ledgerId: string, ym: string) => doc(rollupsCol(ledgerId
 const cmpDesc = (a: Transaction, b: Transaction) =>
   b.date.getTime() - a.date.getTime() || b.createdAt.getTime() - a.createdAt.getTime();
 
-/** Signed effect on each account's balance (minor units), scaled by `sign`. */
+/**
+ * Signed effect on each account's balance (minor units), scaled by `sign`.
+ * Each account moves in its own currency: the source account by `amount`, the
+ * destination of a transfer by `toAmount` (which equals `amount` unless it's a
+ * cross-currency transfer). Not `baseAmount` — balances are per-currency; only
+ * income/expense stats aggregate the TWD baseAmount (ADR-0002).
+ */
 function accountDeltas(
-  t: { type: EventType; accountId: string; toAccountId: string | null; baseAmount: number },
+  t: {
+    type: EventType;
+    accountId: string;
+    toAccountId: string | null;
+    amount: number;
+    toAmount?: number;
+  },
   sign: 1 | -1,
 ): Record<string, number> {
   const d: Record<string, number> = {};
   const add = (acc: string | null, v: number) => {
     if (acc) d[acc] = (d[acc] ?? 0) + v * sign;
   };
-  if (t.type === "income") add(t.accountId, t.baseAmount);
-  else if (t.type === "expense") add(t.accountId, -t.baseAmount);
+  if (t.type === "income") add(t.accountId, t.amount);
+  else if (t.type === "expense") add(t.accountId, -t.amount);
   else if (t.type === "transfer") {
-    add(t.accountId, -t.baseAmount);
-    add(t.toAccountId, t.baseAmount);
+    add(t.accountId, -t.amount);
+    add(t.toAccountId, t.toAmount ?? t.amount);
   }
   return d;
 }
@@ -127,6 +142,7 @@ function fromSnapshot(snap: QueryDocumentSnapshot<DocumentData>): Transaction {
     type: d.type,
     amount: d.amount,
     currency: d.currency,
+    toAmount: d.toAmount ?? d.amount,
     baseAmount: d.baseAmount,
     baseCurrency: d.baseCurrency,
     fxRate: d.fxRate,
@@ -166,6 +182,7 @@ export function writeTransferToBatch(
   const ref = doc(transactionsCol(ledgerId));
   batch.set(ref, {
     ...input,
+    toAmount: input.toAmount ?? input.amount,
     date: Timestamp.fromDate(input.date),
     yearMonth: yearMonthOf(input.date),
     createdAt: serverTimestamp(),
@@ -182,6 +199,7 @@ export const transactionRepo = {
     const batch = writeBatch(db);
     batch.set(ref, {
       ...input,
+      toAmount: input.toAmount ?? input.amount,
       date: Timestamp.fromDate(input.date),
       yearMonth: yearMonthOf(input.date),
       createdAt: serverTimestamp(),
@@ -301,6 +319,8 @@ export const transactionRepo = {
         type: (patch.type ?? old.type) as EventType,
         accountId: patch.accountId ?? old.accountId,
         toAccountId: patch.toAccountId !== undefined ? patch.toAccountId : (old.toAccountId ?? null),
+        amount: patch.amount ?? old.amount,
+        toAmount: patch.toAmount !== undefined ? patch.toAmount : (old.toAmount ?? old.amount),
         baseAmount: patch.baseAmount ?? old.baseAmount,
         categoryId: patch.categoryId !== undefined ? patch.categoryId : (old.categoryId ?? null),
       };

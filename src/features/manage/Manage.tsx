@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { toMinor, toMajor } from "../../lib/money";
+import { toMinor, toMajor, CURRENCIES } from "../../lib/money";
 import type { Account, Category } from "../../domain/types";
 import { accountRepo, categoryRepo } from "../../data/catalogRepo";
 
@@ -137,8 +137,19 @@ function AccountRow({ ledgerId, account }: { ledgerId: string; account: Account 
           value={opening}
           onChange={(e) => setOpening(e.target.value.replace(/[^0-9.-]/g, ""))}
           onBlur={commitOpening}
-          className="w-32 rounded bg-slate-800 px-2 py-1 text-right text-slate-300 outline-none [color-scheme:dark]"
+          className="w-28 rounded bg-slate-800 px-2 py-1 text-right text-slate-300 outline-none [color-scheme:dark]"
         />
+        <select
+          value={account.currency}
+          onChange={(e) => accountRepo.update(ledgerId, account.id, { currency: e.target.value })}
+          className="rounded bg-slate-800 px-2 py-1 text-slate-300 outline-none"
+        >
+          {CURRENCIES.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
       </div>
     </li>
   );

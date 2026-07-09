@@ -69,9 +69,9 @@ export function AccountDetail({
         <MonthSelector month={month} onShift={(d) => setMonth((m) => shiftMonth(m, d))} />
 
         <div className="mt-1 grid grid-cols-3 gap-2 border-y border-slate-800 py-3 text-center">
-          <StatCell label={t("deposits")} minor={deposits} className="text-sky-400" />
-          <StatCell label={t("withdrawals")} minor={withdrawals} className="text-rose-400" />
-          <StatCell label={t("balance")} minor={balance} />
+          <StatCell label={t("deposits")} minor={deposits} className="text-sky-400" currency={account.currency} />
+          <StatCell label={t("withdrawals")} minor={withdrawals} className="text-rose-400" currency={account.currency} />
+          <StatCell label={t("balance")} minor={balance} currency={account.currency} />
         </div>
 
         {mine.length === 0 ? (
@@ -94,6 +94,7 @@ export function AccountDetail({
                       onEdit={onEdit}
                       onDelete={onDelete}
                       runningBalance={runningMap.get(e.id)}
+                      viewAccount={account}
                     />
                   ))}
                 </ul>

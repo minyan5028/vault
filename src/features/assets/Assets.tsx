@@ -103,7 +103,7 @@ export function Assets({
                   {r.account.name}
                 </span>
                 <span className="text-sm tabular-nums text-slate-100">
-                  {formatMoney(r.balance, BASE_CURRENCY, locale)}
+                  {formatMoney(r.balance, r.account.currency, locale)}
                 </span>
               </button>
             </li>

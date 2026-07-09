@@ -4,6 +4,7 @@ import { formatMoney, toMinor, toMajor } from "../../lib/money";
 import { toDateInputValue, fromDateInputValue } from "../../lib/date";
 import type { Account, Category, EventType, Transaction } from "../../domain/types";
 import { transactionRepo, type EntryDraft, type TitleSuggestion } from "../../data/transactionRepo";
+import { holdingRepo } from "../../data/holdingRepo";
 import { TypeToggle } from "../../components/TypeToggle";
 
 interface QuickEntryProps {
@@ -73,6 +74,14 @@ export function QuickEntry({
   const [titleFocused, setTitleFocused] = useState(false);
   const [suggestions, setSuggestions] = useState<TitleSuggestion[]>([]);
   const titleRef = useRef<HTMLInputElement>(null);
+  // Cross-currency transfer: the amount credited to the destination, in its
+  // currency (prefilled from the current FX rate, editable).
+  const [fx, setFx] = useState<Record<string, number>>({});
+  const [toAmountText, setToAmountText] = useState(
+    initial && initial.toAmount !== initial.amount ? String(toMajor(initial.toAmount)) : "",
+  );
+  const [toAmountEdited, setToAmountEdited] = useState(false);
+  useEffect(() => holdingRepo.subscribeFx(ledgerId, setFx), [ledgerId]);
 
   // Title autocomplete: suggest past titles (same shop) as you type.
   useEffect(() => {
@@ -94,12 +103,25 @@ export function QuickEntry({
   const currency = account?.currency ?? "TWD";
   const isTransfer = type === "transfer";
 
+  // Cross-currency when the two accounts hold different currencies. toAmount is
+  // prefilled by converting `amount` at the current rate (fx maps a currency to
+  // its rate into base TWD; base itself is 1) and stays editable.
+  const toAccount = accounts.find((a) => a.id === toAccountId);
+  const toCurrency = toAccount?.currency ?? currency;
+  const isCross = isTransfer && currency !== toCurrency;
+  const autoToAmount =
+    isCross && minor > 0
+      ? String(toMajor(Math.round((minor * (fx[currency] ?? 1)) / (fx[toCurrency] ?? 1))))
+      : "";
+  const toAmountValue = toAmountEdited ? toAmountText : autoToAmount;
+  const toAmountMinor = parseMinor(toAmountValue);
+
   const canSave = useMemo(() => {
     if (minor <= 0) return false;
-    if (isTransfer) return accountId !== toAccountId;
+    if (isTransfer) return accountId !== toAccountId && (!isCross || toAmountMinor > 0);
     // Expenses need a category; income's category is optional.
     return type === "expense" ? categoryId !== null : true;
-  }, [minor, isTransfer, type, accountId, toAccountId, categoryId]);
+  }, [minor, isTransfer, isCross, toAmountMinor, type, accountId, toAccountId, categoryId]);
 
   function save() {
     if (!canSave || saved) return;
@@ -107,6 +129,10 @@ export function QuickEntry({
       type,
       amount: minor,
       currency,
+      // Cross-currency transfer credits the destination its own-currency amount;
+      // otherwise it equals `amount` (kept explicit so an edit can't leave a
+      // stale toAmount from a previous cross-currency state).
+      toAmount: isCross ? toAmountMinor : minor,
       baseAmount: minor, // single-currency for now; FX locks here later
       baseCurrency: currency,
       fxRate: 1,
@@ -244,13 +270,35 @@ export function QuickEntry({
 
         {/* Category grid (hidden for transfers) or transfer destination */}
         {isTransfer ? (
-          <TransferAccounts
-            accounts={accounts}
-            fromId={accountId}
-            toId={toAccountId}
-            onTo={setToAccountId}
-            toLabel={t("to")}
-          />
+          <>
+            <TransferAccounts
+              accounts={accounts}
+              fromId={accountId}
+              toId={toAccountId}
+              onTo={setToAccountId}
+              toLabel={t("to")}
+            />
+            {isCross && (
+              <section className="mt-3">
+                <p className="mb-1 text-xs uppercase tracking-wide text-slate-500">
+                  {t("receivedAmount", { cur: toCurrency })}
+                </p>
+                <input
+                  inputMode="decimal"
+                  value={toAmountValue}
+                  onChange={(e) => {
+                    setToAmountText(sanitizeAmount(e.target.value));
+                    setToAmountEdited(true);
+                  }}
+                  className="w-full rounded-xl bg-slate-800 px-3 py-2 text-center text-base tabular-nums text-slate-100 outline-none focus:ring-2 focus:ring-slate-600"
+                />
+                <p className="mt-1 text-center text-xs text-slate-500">
+                  {formatMoney(minor, currency, i18n.language)} →{" "}
+                  {formatMoney(toAmountMinor, toCurrency, i18n.language)}
+                </p>
+              </section>
+            )}
+          </>
         ) : (
           <section>
             <p className="mb-2 text-xs uppercase tracking-wide text-slate-500">

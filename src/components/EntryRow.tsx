@@ -16,6 +16,7 @@ export function EntryRow({
   onDelete,
   runningBalance,
   authorName,
+  viewAccount,
 }: {
   tx: Transaction;
   locale: string;
@@ -26,6 +27,10 @@ export function EntryRow({
   runningBalance?: number;
   /** In shared ledgers, the member who created this entry (omitted for one's own). */
   authorName?: string;
+  /** Account-detail context: show the figure from this account's perspective —
+   *  its credited toAmount when it's the transfer destination, in its own
+   *  currency. Omit on the Timeline (source-currency view). */
+  viewAccount?: Account;
 }) {
   const { t } = useTranslation();
   const category = categories.find((c) => c.id === tx.categoryId);
@@ -35,6 +40,12 @@ export function EntryRow({
     tx.title ||
     (tx.type === "transfer" ? `${account?.name} → ${toAccount?.name}` : category?.name) ||
     "";
+  // On an account detail, this row's figure is that account's own movement: the
+  // credited toAmount (in its currency) when it's the transfer destination,
+  // otherwise amount. On the Timeline it's the source amount/currency.
+  const isDest = viewAccount != null && tx.toAccountId === viewAccount.id && tx.accountId !== viewAccount.id;
+  const shownAmount = isDest ? tx.toAmount : tx.amount;
+  const shownCurrency = viewAccount ? viewAccount.currency : tx.currency;
   const sign = tx.type === "income" ? "+" : tx.type === "expense" ? "−" : "";
   const amountColor =
     tx.type === "income"
@@ -97,11 +108,11 @@ export function EntryRow({
         <div className="text-right">
           <span className={"text-sm tabular-nums " + amountColor}>
             {sign}
-            {formatMoney(tx.amount, tx.currency, locale)}
+            {formatMoney(shownAmount, shownCurrency, locale)}
           </span>
           {runningBalance !== undefined && (
             <span className="block text-xs tabular-nums text-slate-500">
-              {formatMoney(runningBalance, tx.currency, locale)}
+              {formatMoney(runningBalance, shownCurrency, locale)}
             </span>
           )}
         </div>

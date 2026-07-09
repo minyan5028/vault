@@ -8,12 +8,14 @@ function tx(p: {
   accountId: string;
   toAccountId?: string | null;
   baseAmount: number;
+  toAmount?: number;
 }): Transaction {
   return {
     id: p.id ?? Math.random().toString(36).slice(2),
     type: p.type,
     amount: p.baseAmount,
     currency: "TWD",
+    toAmount: p.toAmount ?? p.baseAmount,
     baseAmount: p.baseAmount,
     baseCurrency: "TWD",
     fxRate: 1,
@@ -39,6 +41,12 @@ describe("effectOn", () => {
     expect(effectOn(transfer, "a")).toBe(-200); // out of source
     expect(effectOn(transfer, "b")).toBe(200); // into destination
     expect(effectOn(transfer, "c")).toBe(0); // unrelated
+  });
+  it("moves each account by its own currency on a cross-currency transfer", () => {
+    // Debit 42,240 TWD from a; credit 1,320 USD to b (toAmount differs).
+    const xfer = tx({ type: "transfer", accountId: "a", toAccountId: "b", baseAmount: 42240, toAmount: 132000 });
+    expect(effectOn(xfer, "a")).toBe(-42240); // source in TWD
+    expect(effectOn(xfer, "b")).toBe(132000); // destination in USD
   });
 });
 

@@ -17,6 +17,7 @@
   "yesterday": "昨天",
   "from": "從",
   "to": "至",
+  "receivedAmount": "轉入金額（{{cur}}）",
   "titlePlaceholder": "這筆是什麼？（選填）",
   "note": "備註",
   "addNote": "新增備註",

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { formatMoney } from "../../lib/money";
+import { formatMoney, CURRENCIES } from "../../lib/money";
 import { toDateInputValue, fromDateInputValue } from "../../lib/date";
 import { valueHolding, portfolioTotals, applySell } from "../../lib/holdings";
 import { holdingRepo, type NewHolding, type TradeInput } from "../../data/holdingRepo";
@@ -16,9 +16,6 @@ import type {
 
 const BASE_CURRENCY = "TWD";
 const CLASSES: HoldingClass[] = ["growth", "dividend"];
-/** Currency codes offered in the add form — a dropdown so a valid ISO 4217 code
- *  is always stored (a free-text typo like "TW" used to crash the page). */
-const CURRENCIES = ["USD", "TWD", "JPY", "HKD", "EUR", "GBP", "CNY"];
 
 const toMinor = (s: string) => Math.round(parseFloat(s || "0") * 100) || 0;
 const toShares = (s: string) => Math.round(parseFloat(s || "0") * 10000) || 0;

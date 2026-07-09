@@ -17,6 +17,7 @@
   "yesterday": "Yesterday",
   "from": "From",
   "to": "To",
+  "receivedAmount": "Amount received ({{cur}})",
   "titlePlaceholder": "What was it? (optional)",
   "note": "Note",
   "addNote": "Add note",

@@ -1,15 +1,17 @@
 /**
  * Account balance math derived from transactions (balances are never stored —
- * see docs/DATA_MODEL.md). All amounts are minor units; uses `baseAmount` so
- * everything is in the ledger's base currency.
+ * see docs/DATA_MODEL.md). Amounts are minor units in each account's own
+ * currency: the source account moves by `amount`, a transfer's destination by
+ * `toAmount` (equal to `amount` unless it's a cross-currency transfer). Not
+ * `baseAmount` — that TWD snapshot is only for income/expense stats (ADR-0002).
  */
 import type { Transaction } from "../domain/types";
 
 /** Signed effect of one transaction on one account's balance. */
 export function effectOn(tx: Transaction, accountId: string): number {
   let e = 0;
-  if (tx.accountId === accountId) e += tx.type === "income" ? tx.baseAmount : -tx.baseAmount;
-  if (tx.type === "transfer" && tx.toAccountId === accountId) e += tx.baseAmount;
+  if (tx.accountId === accountId) e += tx.type === "income" ? tx.amount : -tx.amount;
+  if (tx.type === "transfer" && tx.toAccountId === accountId) e += tx.toAmount;
   return e;
 }
 
@@ -18,11 +20,11 @@ export function netFlowByAccount(txns: readonly Transaction[]): Map<string, numb
   const m = new Map<string, number>();
   const add = (id: string, v: number) => m.set(id, (m.get(id) ?? 0) + v);
   for (const tx of txns) {
-    if (tx.type === "expense") add(tx.accountId, -tx.baseAmount);
-    else if (tx.type === "income") add(tx.accountId, tx.baseAmount);
+    if (tx.type === "expense") add(tx.accountId, -tx.amount);
+    else if (tx.type === "income") add(tx.accountId, tx.amount);
     else if (tx.type === "transfer") {
-      add(tx.accountId, -tx.baseAmount);
-      if (tx.toAccountId) add(tx.toAccountId, tx.baseAmount);
+      add(tx.accountId, -tx.amount);
+      if (tx.toAccountId) add(tx.toAccountId, tx.toAmount);
     }
   }
   return m;
@@ -36,10 +38,10 @@ export function depositsWithdrawals(
   let deposits = 0;
   let withdrawals = 0;
   for (const tx of txns) {
-    if (tx.type === "transfer" && tx.toAccountId === accountId) deposits += tx.baseAmount;
+    if (tx.type === "transfer" && tx.toAccountId === accountId) deposits += tx.toAmount;
     if (tx.accountId === accountId) {
-      if (tx.type === "income") deposits += tx.baseAmount;
-      else withdrawals += tx.baseAmount;
+      if (tx.type === "income") deposits += tx.amount;
+      else withdrawals += tx.amount;
     }
   }
   return { deposits, withdrawals };

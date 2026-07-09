@@ -9,6 +9,10 @@
 /** Fixed scale for every currency: stored = displayed × 100. */
 export const MINOR_SCALE = 100;
 
+/** Currency codes offered in pickers (accounts, holdings) — a dropdown so only
+ *  valid ISO 4217 codes are stored. Base currency (TWD) first. */
+export const CURRENCIES = ["TWD", "USD", "JPY", "HKD", "EUR", "GBP", "CNY"];
+
 /**
  * Convert a user-entered major value (e.g. 149.9 or "149.90") into stored
  * minor units (14990). Rounds to the nearest minor unit; rejects non-finite
