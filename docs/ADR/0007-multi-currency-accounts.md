@@ -44,8 +44,10 @@ so it lands at the deposit — a genuine cross-currency transfer.
 
 - Net worth now moves with FX rates (a foreign balance's TWD value fluctuates).
 - Cross-currency transfers must capture both legs' amounts.
-- Rates live in `meta/fx` and are entered manually (Manage → Exchange rates, or
-  the investment price-update form).
+- Rates live in `meta/fx`, set manually (Manage → Exchange rates, or the
+  price-update form) or by a weekly Monday-anchored auto-refresh from a free
+  public API (open.er-api.com) — client-triggered, as Vault has no backend. See
+  DATA_MODEL.md § meta/fx.
 
 ## Notes
 
