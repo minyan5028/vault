@@ -8,6 +8,7 @@ import { transactionRepo } from "./data/transactionRepo";
 import { materializeRecurring } from "./data/materializeRecurring";
 import { useLedgerData } from "./data/useLedgerData";
 import { useFxAutoRefresh } from "./data/useFxAutoRefresh";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { useUserLedgers } from "./data/useUserLedgers";
 import { useMyInvites } from "./data/useMyInvites";
 import { ledgerRepo } from "./data/ledgerRepo";
@@ -147,6 +148,7 @@ function AuthedApp({ user }: { user: User }) {
 
   return (
     <>
+      <ErrorBoundary key={tab}>
       {tab === "timeline" && (
         <Timeline
           ledgerId={ledgerId}
@@ -189,6 +191,7 @@ function AuthedApp({ user }: { user: User }) {
           onLedgerDeleted={() => setLedgerId(user.uid)}
         />
       )}
+      </ErrorBoundary>
 
       <BottomNav active={tab} onChange={setTab} />
 
