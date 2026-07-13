@@ -1,16 +1,8 @@
 import { useEffect } from "react";
 import { holdingRepo } from "./holdingRepo";
 import { fetchRatesIntoTwd } from "../lib/fxApi";
+import { thisMondayMidnight } from "../lib/date";
 import type { Account } from "../domain/types";
-
-/** Local-time midnight of the most recent Monday (start of the current week). */
-function thisMondayMidnight(now: number): number {
-  const d = new Date(now);
-  const daysSinceMonday = (d.getDay() + 6) % 7; // Mon→0, Tue→1, … Sun→6
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() - daysSinceMonday);
-  return d.getTime();
-}
 
 /**
  * Refresh foreign-currency rates into `meta/fx` once per week, anchored to

@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { effectOn, netFlowByAccount, depositsWithdrawals, runningBalances } from "./balance";
+import {
+  accountDeltas,
+  effectOn,
+  netFlowByAccount,
+  depositsWithdrawals,
+  runningBalances,
+} from "./balance";
 import type { EventType, Transaction } from "../domain/types";
 
 function tx(p: {
@@ -32,6 +38,33 @@ function tx(p: {
     deletedAt: null,
   };
 }
+
+describe("accountDeltas", () => {
+  it("income credits, expense debits the source account", () => {
+    expect(accountDeltas({ type: "income", accountId: "a", toAccountId: null, amount: 500 }, 1)).toEqual({ a: 500 });
+    expect(accountDeltas({ type: "expense", accountId: "a", toAccountId: null, amount: 300 }, 1)).toEqual({ a: -300 });
+  });
+  it("transfer debits source and credits destination", () => {
+    expect(
+      accountDeltas({ type: "transfer", accountId: "a", toAccountId: "b", amount: 200 }, 1),
+    ).toEqual({ a: -200, b: 200 });
+  });
+  it("cross-currency transfer credits the destination its own toAmount", () => {
+    // 42,240 TWD out of a; 1,320 USD into b
+    expect(
+      accountDeltas(
+        { type: "transfer", accountId: "a", toAccountId: "b", amount: 42240, toAmount: 132000 },
+        1,
+      ),
+    ).toEqual({ a: -42240, b: 132000 });
+  });
+  it("reverses with sign -1 — the holding-deletion cash reversal", () => {
+    // undo a buy (cash → holding): cash returns, holding endpoint zeroes out
+    expect(
+      accountDeltas({ type: "transfer", accountId: "cash", toAccountId: "dis", amount: 132000 }, -1),
+    ).toEqual({ cash: 132000, dis: -132000 });
+  });
+});
 
 describe("effectOn", () => {
   it("signs by type relative to the account", () => {

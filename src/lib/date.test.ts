@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   addDays,
   addMonthsClamped,
+  thisMondayMidnight,
   shiftMonth,
   yearMonthOf,
   toDateInputValue,
@@ -40,5 +41,18 @@ describe("date input round-trip", () => {
   it("round-trips local dates without a UTC shift", () => {
     expect(toDateInputValue(fromDateInputValue("2026-07-05"))).toBe("2026-07-05");
     expect(yearMonthOf(new Date(2026, 6, 5))).toBe("2026-07");
+  });
+});
+
+describe("thisMondayMidnight", () => {
+  const monday = new Date(2026, 6, 6, 0, 0, 0).getTime(); // Mon 2026-07-06 00:00 local
+  it("maps any day of the week back to that week's Monday midnight", () => {
+    expect(thisMondayMidnight(new Date(2026, 6, 6, 9, 0).getTime())).toBe(monday); // Mon
+    expect(thisMondayMidnight(new Date(2026, 6, 8, 14, 30).getTime())).toBe(monday); // Wed
+    expect(thisMondayMidnight(new Date(2026, 6, 12, 23, 0).getTime())).toBe(monday); // Sun
+  });
+  it("rolls to the next Monday once a new week starts", () => {
+    const nextMon = new Date(2026, 6, 13, 0, 0).getTime();
+    expect(thisMondayMidnight(new Date(2026, 6, 13, 0, 30).getTime())).toBe(nextMon);
   });
 });

@@ -29,10 +29,10 @@ import { applySell } from "../lib/holdings";
 import {
   writeTransferToBatch,
   softDeleteInBatch,
-  transferBalanceDelta,
   commitBalanceDelta,
   type NewTransactionInput,
 } from "./transactionRepo";
+import { accountDeltas } from "../lib/balance";
 import type { Holding, PortfolioSnapshot, SnapshotEntry, Trade, TradeKind } from "../domain/types";
 
 const holdingsCol = (ledgerId: string) => collection(db, "ledgers", ledgerId, "holdings");
@@ -308,7 +308,7 @@ export const holdingRepo = {
       const d = snap.data();
       if (d.deletedAt) continue;
       softDeleteInBatch(batch, ledgerId, snap.id);
-      const delta = transferBalanceDelta(
+      const delta = accountDeltas(
         {
           type: d.type,
           accountId: d.accountId,

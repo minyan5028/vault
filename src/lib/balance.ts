@@ -5,7 +5,37 @@
  * `toAmount` (equal to `amount` unless it's a cross-currency transfer). Not
  * `baseAmount` — that TWD snapshot is only for income/expense stats (ADR-0002).
  */
-import type { Transaction } from "../domain/types";
+import type { EventType, Transaction } from "../domain/types";
+
+/**
+ * Signed per-account balance deltas for one transaction (minor units, each
+ * account in its own currency), scaled by `sign`. The source account moves by
+ * `amount`, a transfer's destination by `toAmount` (= amount unless cross-
+ * currency). Shared by the client balance view and the server rollup writes, so
+ * both agree; also drives the holding-deletion cash reversal.
+ */
+export function accountDeltas(
+  t: {
+    type: EventType;
+    accountId: string;
+    toAccountId: string | null;
+    amount: number;
+    toAmount?: number;
+  },
+  sign: 1 | -1,
+): Record<string, number> {
+  const d: Record<string, number> = {};
+  const add = (acc: string | null, v: number) => {
+    if (acc) d[acc] = (d[acc] ?? 0) + v * sign;
+  };
+  if (t.type === "income") add(t.accountId, t.amount);
+  else if (t.type === "expense") add(t.accountId, -t.amount);
+  else if (t.type === "transfer") {
+    add(t.accountId, -t.amount);
+    add(t.toAccountId, t.toAmount ?? t.amount);
+  }
+  return d;
+}
 
 /** Signed effect of one transaction on one account's balance. */
 export function effectOn(tx: Transaction, accountId: string): number {

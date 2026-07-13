@@ -29,6 +29,7 @@ import {
 import { db } from "../lib/firebase";
 import { yearMonthOf } from "../lib/date";
 import { addContribution, monthContribution, type RollupContribution } from "../lib/rollup";
+import { accountDeltas } from "../lib/balance";
 import type { EventType, MonthlyRollup, Transaction } from "../domain/types";
 
 export interface NewTransactionInput {
@@ -68,36 +69,6 @@ const monthRollupRef = (ledgerId: string, ym: string) => doc(rollupsCol(ledgerId
 
 const cmpDesc = (a: Transaction, b: Transaction) =>
   b.date.getTime() - a.date.getTime() || b.createdAt.getTime() - a.createdAt.getTime();
-
-/**
- * Signed effect on each account's balance (minor units), scaled by `sign`.
- * Each account moves in its own currency: the source account by `amount`, the
- * destination of a transfer by `toAmount` (which equals `amount` unless it's a
- * cross-currency transfer). Not `baseAmount` — balances are per-currency; only
- * income/expense stats aggregate the TWD baseAmount (ADR-0002).
- */
-function accountDeltas(
-  t: {
-    type: EventType;
-    accountId: string;
-    toAccountId: string | null;
-    amount: number;
-    toAmount?: number;
-  },
-  sign: 1 | -1,
-): Record<string, number> {
-  const d: Record<string, number> = {};
-  const add = (acc: string | null, v: number) => {
-    if (acc) d[acc] = (d[acc] ?? 0) + v * sign;
-  };
-  if (t.type === "income") add(t.accountId, t.amount);
-  else if (t.type === "expense") add(t.accountId, -t.amount);
-  else if (t.type === "transfer") {
-    add(t.accountId, -t.amount);
-    add(t.toAccountId, t.toAmount ?? t.amount);
-  }
-  return d;
-}
 
 /** A set-merge payload that atomically increments the rollup's netFlow map. */
 function rollupDelta(deltas: Record<string, number>) {
@@ -190,25 +161,6 @@ export function writeTransferToBatch(
     deletedAt: null,
   });
   batch.set(rollupRef(ledgerId), rollupDelta(accountDeltas(input, 1)), { merge: true });
-}
-
-/**
- * Signed balance-rollup delta for one transaction (per-account minor units).
- * Used when deleting a holding to reverse its paired cash legs. Callers must
- * combine deltas across transactions and write the rollup once (a batch can't
- * increment the same doc twice), via `commitBalanceDelta`.
- */
-export function transferBalanceDelta(
-  txData: {
-    type: EventType;
-    accountId: string;
-    toAccountId: string | null;
-    amount: number;
-    toAmount?: number;
-  },
-  sign: 1 | -1,
-): Record<string, number> {
-  return accountDeltas(txData, sign);
 }
 
 /** Soft-delete a transaction within a batch (no rollup change — caller nets the

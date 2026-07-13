@@ -26,6 +26,16 @@ export function addDays(date: Date, n: number): Date {
   return d;
 }
 
+/** Local-time midnight of the most recent Monday (start of the current week).
+ *  Anchors the weekly FX auto-refresh so it doesn't drift week over week. */
+export function thisMondayMidnight(now: number): number {
+  const d = new Date(now);
+  const daysSinceMonday = (d.getDay() + 6) % 7; // Mon→0, Tue→1, … Sun→6
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - daysSinceMonday);
+  return d.getTime();
+}
+
 /** Add whole months, clamping the day to the target month's length (Jan 31 + 1m → Feb 28/29). */
 export function addMonthsClamped(date: Date, n: number): Date {
   const day = date.getDate();
