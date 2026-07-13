@@ -1,29 +1,26 @@
 import { useEffect, useState } from "react";
-import type { Holding, PortfolioSnapshot } from "../domain/types";
+import type { Holding } from "../domain/types";
 import { holdingRepo } from "./holdingRepo";
 
-/** Live holdings + current FX rates + valuation snapshots for a ledger. */
+/** Live holdings + current FX rates for a ledger. Valuation snapshots are a
+ *  separate hook (useSnapshots) since only the Investments trend needs them —
+ *  the Assets/Manage pages shouldn't subscribe to snapshots they don't use. */
 export function useHoldings(ledgerId: string): {
   holdings: Holding[];
   fx: Record<string, number>;
-  snapshots: PortfolioSnapshot[];
 } {
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const [fx, setFx] = useState<Record<string, number>>({});
-  const [snapshots, setSnapshots] = useState<PortfolioSnapshot[]>([]);
   useEffect(() => {
     if (!ledgerId) return;
     setHoldings([]);
     setFx({});
-    setSnapshots([]);
     const u1 = holdingRepo.subscribeHoldings(ledgerId, setHoldings);
     const u2 = holdingRepo.subscribeFx(ledgerId, setFx);
-    const u3 = holdingRepo.subscribeSnapshots(ledgerId, setSnapshots);
     return () => {
       u1();
       u2();
-      u3();
     };
   }, [ledgerId]);
-  return { holdings, fx, snapshots };
+  return { holdings, fx };
 }

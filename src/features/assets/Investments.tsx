@@ -4,6 +4,7 @@ import { formatMoney } from "../../lib/money";
 import { valueHolding, portfolioTotals, toBase } from "../../lib/holdings";
 import { holdingRepo } from "../../data/holdingRepo";
 import { useHoldings } from "../../data/useHoldings";
+import { useSnapshots } from "../../data/useSnapshots";
 import type { Account } from "../../domain/types";
 import { BASE_CURRENCY, CLASSES, fromShares } from "./investments/shared";
 import { Gain } from "./investments/fields";
@@ -27,7 +28,8 @@ export function Investments({
 }) {
   const { t, i18n } = useTranslation();
   const locale = i18n.language;
-  const { holdings, fx, snapshots } = useHoldings(ledgerId);
+  const { holdings, fx } = useHoldings(ledgerId);
+  const snapshots = useSnapshots(ledgerId);
   const active = useMemo(() => holdings.filter((h) => !h.archived), [holdings]);
   const totals = useMemo(() => portfolioTotals(active, fx), [active, fx]);
   const dividendBase = useMemo(
