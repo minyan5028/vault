@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { toMinor, toMajor, sumMinor, formatMoney, shortMoney, MINOR_SCALE } from "./money";
+import {
+  toMinor,
+  toMajor,
+  sumMinor,
+  formatMoney,
+  shortMoney,
+  setAmountsHidden,
+  MINOR_SCALE,
+} from "./money";
 
 describe("toMinor", () => {
   it("scales major values by 100", () => {
@@ -77,6 +85,21 @@ describe("shortMoney", () => {
   it("groups by K/M elsewhere", () => {
     expect(shortMoney(67017600, "en")).toBe("$670K");
     expect(shortMoney(25000000000, "en")).toBe("$250.0M");
+  });
+});
+
+describe("amount hiding (privacy toggle)", () => {
+  it("masks digits but keeps the currency symbol; shortMoney fully masks", () => {
+    setAmountsHidden(true);
+    try {
+      expect(formatMoney(6865408, "TWD", "zh-TW")).toBe("$••••");
+      expect(formatMoney(214544, "USD", "zh-TW")).toBe("US$••••");
+      expect(shortMoney(6865408, "zh-TW")).toBe("••••");
+    } finally {
+      setAmountsHidden(false);
+    }
+    // back to normal once shown
+    expect(formatMoney(6865408, "TWD", "zh-TW")).toContain("68,654");
   });
 });
 

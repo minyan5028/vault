@@ -9,6 +9,8 @@ import { materializeRecurring } from "./data/materializeRecurring";
 import { useLedgerData } from "./data/useLedgerData";
 import { useFxAutoRefresh } from "./data/useFxAutoRefresh";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { useAmountVisibility } from "./lib/useAmountVisibility";
+import { AmountToggle } from "./components/AmountToggle";
 import { useUserLedgers } from "./data/useUserLedgers";
 import { useMyInvites } from "./data/useMyInvites";
 import { ledgerRepo } from "./data/ledgerRepo";
@@ -56,6 +58,7 @@ function AuthedApp({ user }: { user: User }) {
   const activeLedger = ledgers.find((l) => l.id === ledgerId);
   const { accounts, categories } = useLedgerData(ready ? ledgerId : "");
   useFxAutoRefresh(ready ? ledgerId : "", accounts);
+  const amounts = useAmountVisibility();
   const myProfile = useMemo(
     () => ({ name: user.displayName ?? "", email: user.email ?? "" }),
     [user.displayName, user.email],
@@ -148,6 +151,7 @@ function AuthedApp({ user }: { user: User }) {
 
   return (
     <>
+      <AmountToggle hidden={amounts.hidden} onToggle={amounts.toggle} />
       <ErrorBoundary key={tab}>
       {tab === "timeline" && (
         <Timeline

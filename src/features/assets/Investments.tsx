@@ -6,7 +6,7 @@ import { holdingRepo } from "../../data/holdingRepo";
 import { useHoldings } from "../../data/useHoldings";
 import { useSnapshots } from "../../data/useSnapshots";
 import type { Account } from "../../domain/types";
-import { BASE_CURRENCY, CLASSES, fromShares } from "./investments/shared";
+import { BASE_CURRENCY, CLASSES, displayShares } from "./investments/shared";
 import { Gain } from "./investments/fields";
 import { ValueTrend } from "./investments/ValueTrend";
 import { AddHoldingForm } from "./investments/AddHoldingForm";
@@ -156,7 +156,7 @@ export function Investments({
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-slate-200">{h.ticker}</p>
                             <p className="text-xs text-slate-500">
-                              {fromShares(h.shares)} × {formatMoney(h.price, h.currency, locale)}
+                              {displayShares(h.shares)} × {formatMoney(h.price, h.currency, locale)}
                             </p>
                           </div>
                           <div className="text-right">

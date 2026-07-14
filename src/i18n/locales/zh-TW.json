@@ -82,6 +82,8 @@
   "valueTrend": "市值走勢",
   "netWorth": "淨值",
   "cash": "現金帳戶",
+  "hideAmounts": "隱藏金額",
+  "showAmounts": "顯示金額",
   "addHolding": "新增持股",
   "updatePrices": "更新價格",
   "updateCurrency": "更新 {{cur}}",

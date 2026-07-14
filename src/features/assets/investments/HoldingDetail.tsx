@@ -12,7 +12,7 @@ import {
   toMinor,
   toShares,
   fromMinor,
-  fromShares,
+  displayShares,
 } from "./shared";
 import { Gain, Field, CashAccountField } from "./fields";
 
@@ -58,7 +58,7 @@ export function HoldingDetail({
           </div>
           <div className="mt-0.5 flex justify-between text-xs text-slate-500">
             <span>
-              {fromShares(holding.shares)} × {formatMoney(holding.price, holding.currency, locale)}
+              {displayShares(holding.shares)} × {formatMoney(holding.price, holding.currency, locale)}
             </span>
             <span>
               {t("unrealized")} <Gain minor={v.gainBase} locale={locale} />
@@ -432,7 +432,7 @@ function TradeLog({
             </span>
             <div className="min-w-0 flex-1">
               <p className="text-slate-300">
-                {fromShares(tr.shares)} × {formatMoney(tr.price, holding.currency, locale)}
+                {displayShares(tr.shares)} × {formatMoney(tr.price, holding.currency, locale)}
               </p>
               <p className="text-xs text-slate-500">{tr.date.toLocaleDateString(locale)}</p>
             </div>

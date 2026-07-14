@@ -14,6 +14,20 @@ export const MINOR_SCALE = 100;
 export const CURRENCIES = ["TWD", "USD", "JPY", "HKD", "EUR", "GBP", "CNY"];
 
 /**
+ * Presentation-only privacy toggle. When on, formatMoney / shortMoney mask the
+ * digits (keeping the currency symbol) so amounts can be hidden for demos /
+ * screen-sharing. A module flag read at format time; a context toggle flips it
+ * and forces a re-render (see AmountVisibility). Never affects stored data.
+ */
+let amountsHidden = false;
+export const setAmountsHidden = (hidden: boolean) => {
+  amountsHidden = hidden;
+};
+export const areAmountsHidden = () => amountsHidden;
+const MASK = "••••";
+const maskDigits = (s: string) => s.replace(/[\d.,]+/, MASK);
+
+/**
  * Convert a user-entered major value (e.g. 149.9 or "149.90") into stored
  * minor units (14990). Rounds to the nearest minor unit; rejects non-finite
  * or unparseable input.
@@ -57,8 +71,9 @@ export function formatMoney(
   locale?: string,
 ): string {
   const major = toMajor(minor);
+  let full: string;
   try {
-    return new Intl.NumberFormat(locale, {
+    full = new Intl.NumberFormat(locale, {
       style: "currency",
       currency,
     }).format(major);
@@ -67,8 +82,9 @@ export function formatMoney(
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(major);
-    return `${amount} ${currency}`;
+    full = `${amount} ${currency}`;
   }
+  return amountsHidden ? maskDigits(full) : full;
 }
 
 /**
@@ -77,6 +93,7 @@ export function formatMoney(
  * figures — it rounds.
  */
 export function shortMoney(minor: number, locale?: string): string {
+  if (amountsHidden) return MASK;
   const major = minor / MINOR_SCALE;
   const abs = Math.abs(major);
   const sign = major < 0 ? "−" : "";

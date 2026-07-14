@@ -82,6 +82,8 @@
   "valueTrend": "Value trend",
   "netWorth": "Net worth",
   "cash": "Cash & accounts",
+  "hideAmounts": "Hide amounts",
+  "showAmounts": "Show amounts",
   "addHolding": "Add holding",
   "updatePrices": "Update prices",
   "updateCurrency": "Update {{cur}}",
