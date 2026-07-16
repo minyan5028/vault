@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { formatMoney } from "../../lib/money";
-import { valueHolding, portfolioTotals, toBase } from "../../lib/holdings";
+import { valueHolding, portfolioTotals, toBase, rateToBase } from "../../lib/holdings";
 import { holdingRepo } from "../../data/holdingRepo";
 import { useHoldings } from "../../data/useHoldings";
 import { useSnapshots } from "../../data/useSnapshots";
@@ -33,7 +33,7 @@ export function Investments({
   const active = useMemo(() => holdings.filter((h) => !h.archived), [holdings]);
   const totals = useMemo(() => portfolioTotals(active, fx), [active, fx]);
   const dividendBase = useMemo(
-    () => active.reduce((s, h) => s + toBase(h.dividendReceived, fx[h.currency] ?? 1), 0),
+    () => active.reduce((s, h) => s + toBase(h.dividendReceived, rateToBase(h.currency, fx)), 0),
     [active, fx],
   );
   const [panel, setPanel] = useState<"none" | "add" | "update">("none");

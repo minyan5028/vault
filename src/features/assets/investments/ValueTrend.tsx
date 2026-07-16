@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { shortMoney } from "../../../lib/money";
-import { marketValue, toBase } from "../../../lib/holdings";
+import { marketValue, toBase, rateToBase } from "../../../lib/holdings";
 import type { Holding, PortfolioSnapshot } from "../../../domain/types";
 import { BASE_CURRENCY } from "./shared";
 
@@ -27,7 +27,7 @@ export function ValueTrend({
       let value = 0;
       for (const [hid, e] of Object.entries(s.entries)) {
         const cur = curOf[hid] ?? BASE_CURRENCY;
-        value += toBase(marketValue(e.shares, e.price), s.fx[cur] ?? 1);
+        value += toBase(marketValue(e.shares, e.price), rateToBase(cur, s.fx));
       }
       return { date: s.date, value };
     });
@@ -36,7 +36,7 @@ export function ValueTrend({
     let nowValue = 0;
     for (const h of holdings) {
       if (h.archived) continue;
-      nowValue += toBase(marketValue(h.shares, h.price), fx[h.currency] ?? 1);
+      nowValue += toBase(marketValue(h.shares, h.price), rateToBase(h.currency, fx));
     }
     const today = new Date().toISOString().slice(0, 10);
     if (pts.length > 0 && pts[pts.length - 1].date === today) {

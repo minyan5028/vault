@@ -16,6 +16,16 @@ export function toBase(minor: number, fxRate: number): number {
   return Math.round(minor * fxRate);
 }
 
+/**
+ * Rate to convert `currency` into the base (TWD). Base is 1:1. A foreign
+ * currency uses its known rate, or **0 if none is set** — so an un-priced
+ * foreign balance contributes 0 to net worth rather than being counted 1:1
+ * (which would silently inflate the total by treating it as TWD).
+ */
+export function rateToBase(currency: string, fx: Record<string, number>): number {
+  return currency === "TWD" ? 1 : (fx[currency] ?? 0);
+}
+
 export interface HoldingValue {
   /** Market value in the holding's currency (minor units). */
   valueCur: number;
@@ -65,7 +75,7 @@ export function valueHolding(
   h: Pick<Holding, "shares" | "price" | "cost" | "currency">,
   fx: Record<string, number>,
 ): HoldingValue {
-  const rate = fx[h.currency] ?? 1; // base currency (or unknown) → 1
+  const rate = rateToBase(h.currency, fx);
   const valueCur = marketValue(h.shares, h.price);
   const gainCur = valueCur - h.cost;
   return { valueCur, gainCur, valueBase: toBase(valueCur, rate), gainBase: toBase(gainCur, rate) };
@@ -105,7 +115,7 @@ export function portfolioTotals(
   let realizedBase = 0;
   for (const h of holdings) {
     const v = valueHolding(h, fx);
-    const realized = toBase(h.realizedGain ?? 0, fx[h.currency] ?? 1);
+    const realized = toBase(h.realizedGain ?? 0, rateToBase(h.currency, fx));
     valueBase += v.valueBase;
     gainBase += v.gainBase;
     realizedBase += realized;

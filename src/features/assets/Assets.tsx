@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { formatMoney } from "../../lib/money";
-import { portfolioTotals, toBase } from "../../lib/holdings";
+import { portfolioTotals, toBase, rateToBase } from "../../lib/holdings";
 import { useBalances } from "../../data/useBalances";
 import { useHoldings } from "../../data/useHoldings";
 import type { Account } from "../../domain/types";
@@ -38,7 +38,7 @@ export function Assets({
   // Net worth values each account's balance into TWD at the current rate (the
   // balance itself is in the account's own currency). Historical transaction
   // stats keep their entry-locked FX (ADR-0002) — this is presentation only.
-  const cashTotal = rows.reduce((s, r) => s + toBase(r.balance, fx[r.account.currency] ?? 1), 0);
+  const cashTotal = rows.reduce((s, r) => s + toBase(r.balance, rateToBase(r.account.currency, fx)), 0);
   const invest = useMemo(
     () => portfolioTotals(holdings.filter((h) => !h.archived), fx),
     [holdings, fx],
@@ -108,8 +108,8 @@ export function Assets({
                   </span>
                   {r.account.currency !== BASE_CURRENCY && (
                     <span className="block text-xs tabular-nums text-slate-500">
-                      × {fx[r.account.currency] ?? 1} ={" "}
-                      {formatMoney(toBase(r.balance, fx[r.account.currency] ?? 1), BASE_CURRENCY, locale)}
+                      × {rateToBase(r.account.currency, fx)} ={" "}
+                      {formatMoney(toBase(r.balance, rateToBase(r.account.currency, fx)), BASE_CURRENCY, locale)}
                     </span>
                   )}
                 </span>
