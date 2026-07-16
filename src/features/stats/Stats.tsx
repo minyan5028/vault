@@ -12,6 +12,7 @@ import { SLICE_COLORS, OTHER_COLOR, type Slice } from "./donutPalette";
 import { CategoryBreakdown } from "./CategoryBreakdown";
 import { ContentList } from "./ContentList";
 import { DrillView } from "./DrillView";
+import { AppLogo } from "../../components/AppLogo";
 
 type Period = "month" | "year";
 type View = "category" | "trend" | "content";
@@ -165,7 +166,10 @@ export function Stats({
         ) : (
           <>
         <header className="flex items-center justify-between py-1">
-          <span className="text-lg font-semibold tracking-tight">{t("stats")}</span>
+          <div className="flex items-center gap-2">
+            <AppLogo />
+            <span className="text-lg font-semibold tracking-tight">{t("stats")}</span>
+          </div>
           <div className="flex gap-1 text-xs">
             {(["month", "year"] as Period[]).map((p) => (
               <Pill key={p} active={period === p} onClick={() => setPeriod(p)}>

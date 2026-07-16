@@ -26,6 +26,23 @@ export function addDays(date: Date, n: number): Date {
   return d;
 }
 
+/**
+ * Most recent quarterly review anchor (Mar/Jun/Sep/Dec 15, local midnight) at or
+ * before `now`. Anchors the "record your stock prices" reminder to fixed dates
+ * so it doesn't drift — if no price update has happened since this anchor, remind.
+ */
+export function lastQuarterlyAnchor(now: number): number {
+  const y = new Date(now).getFullYear();
+  const anchors = [
+    new Date(y - 1, 11, 15),
+    new Date(y, 2, 15),
+    new Date(y, 5, 15),
+    new Date(y, 8, 15),
+    new Date(y, 11, 15),
+  ].map((d) => d.getTime());
+  return anchors.filter((a) => a <= now).pop()!;
+}
+
 /** Local-time midnight of the most recent Monday (start of the current week).
  *  Anchors the weekly FX auto-refresh so it doesn't drift week over week. */
 export function thisMondayMidnight(now: number): number {

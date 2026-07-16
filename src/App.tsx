@@ -10,7 +10,8 @@ import { useLedgerData } from "./data/useLedgerData";
 import { useFxAutoRefresh } from "./data/useFxAutoRefresh";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { useAmountVisibility } from "./lib/useAmountVisibility";
-import { AmountToggle } from "./components/AmountToggle";
+import { useStockReminder } from "./data/useStockReminder";
+import { AppNavProvider } from "./components/appNav";
 import { useUserLedgers } from "./data/useUserLedgers";
 import { useMyInvites } from "./data/useMyInvites";
 import { ledgerRepo } from "./data/ledgerRepo";
@@ -59,6 +60,7 @@ function AuthedApp({ user }: { user: User }) {
   const { accounts, categories } = useLedgerData(ready ? ledgerId : "");
   useFxAutoRefresh(ready ? ledgerId : "", accounts);
   const amounts = useAmountVisibility();
+  const stockReminderDue = useStockReminder(ready ? ledgerId : "");
   const myProfile = useMemo(
     () => ({ name: user.displayName ?? "", email: user.email ?? "" }),
     [user.displayName, user.email],
@@ -150,8 +152,9 @@ function AuthedApp({ user }: { user: User }) {
   };
 
   return (
-    <>
-      <AmountToggle hidden={amounts.hidden} onToggle={amounts.toggle} />
+    <AppNavProvider
+      value={{ reminderCount: stockReminderDue ? 1 : 0, onLogoClick: () => setTab("assets") }}
+    >
       <ErrorBoundary key={tab}>
       {tab === "timeline" && (
         <Timeline
@@ -192,6 +195,8 @@ function AuthedApp({ user }: { user: User }) {
           categories={categories}
           ledger={activeLedger}
           uid={user.uid}
+          amountsHidden={amounts.hidden}
+          onToggleAmounts={amounts.toggle}
           onLedgerDeleted={() => setLedgerId(user.uid)}
         />
       )}
@@ -254,7 +259,7 @@ function AuthedApp({ user }: { user: User }) {
           </button>
         </div>
       )}
-    </>
+    </AppNavProvider>
   );
 }
 

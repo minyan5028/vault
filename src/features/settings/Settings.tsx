@@ -6,6 +6,7 @@ import { Manage } from "../manage/Manage";
 import { Recurring } from "../recurring/Recurring";
 import { Backup } from "../backup/Backup";
 import { LedgerSettings } from "./LedgerSettings";
+import { AppLogo } from "../../components/AppLogo";
 
 type Sub = "catalog" | "recurring" | "backup" | "ledger" | null;
 
@@ -19,6 +20,8 @@ export function Settings({
   categories,
   ledger,
   uid,
+  amountsHidden,
+  onToggleAmounts,
   onLedgerDeleted,
 }: {
   ledgerId: string;
@@ -26,6 +29,8 @@ export function Settings({
   categories: Category[];
   ledger?: Ledger;
   uid: string;
+  amountsHidden: boolean;
+  onToggleAmounts: () => void;
   onLedgerDeleted: () => void;
 }) {
   const { t, i18n } = useTranslation();
@@ -73,7 +78,8 @@ export function Settings({
   return (
     <main className="min-h-dvh bg-slate-900 text-slate-100">
       <div className="mx-auto max-w-md px-4 pb-28 pt-4">
-        <header className="mb-4 py-1">
+        <header className="mb-4 flex items-center gap-2 py-1">
+          <AppLogo />
           <span className="text-lg font-semibold tracking-tight">{t("settings")}</span>
         </header>
 
@@ -86,6 +92,11 @@ export function Settings({
             label={t("language")}
             value={i18n.resolvedLanguage === "zh-TW" ? "中文" : "English"}
             onClick={() => void i18n.changeLanguage(nextLang)}
+          />
+          <Row
+            label={t("hideAmounts")}
+            value={amountsHidden ? t("on") : t("off")}
+            onClick={onToggleAmounts}
           />
           <Row label={t("signOut")} onClick={() => void signOutUser()} danger />
         </ul>

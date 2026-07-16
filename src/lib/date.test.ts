@@ -3,6 +3,7 @@ import {
   addDays,
   addMonthsClamped,
   thisMondayMidnight,
+  lastQuarterlyAnchor,
   shiftMonth,
   yearMonthOf,
   toDateInputValue,
@@ -41,6 +42,19 @@ describe("date input round-trip", () => {
   it("round-trips local dates without a UTC shift", () => {
     expect(toDateInputValue(fromDateInputValue("2026-07-05"))).toBe("2026-07-05");
     expect(yearMonthOf(new Date(2026, 6, 5))).toBe("2026-07");
+  });
+});
+
+describe("lastQuarterlyAnchor", () => {
+  const t = (y: number, m: number, d: number) => new Date(y, m, d).getTime();
+  it("returns the most recent Mar/Jun/Sep/Dec 15 at or before now", () => {
+    expect(lastQuarterlyAnchor(t(2026, 6, 16))).toBe(t(2026, 5, 15)); // Jul 16 → Jun 15
+    expect(lastQuarterlyAnchor(t(2026, 2, 15))).toBe(t(2026, 2, 15)); // Mar 15 → same day
+    expect(lastQuarterlyAnchor(t(2026, 11, 20))).toBe(t(2026, 11, 15)); // Dec 20 → Dec 15
+  });
+  it("rolls back to the previous December before mid-March", () => {
+    expect(lastQuarterlyAnchor(t(2026, 2, 14))).toBe(t(2025, 11, 15)); // Mar 14 → prev Dec 15
+    expect(lastQuarterlyAnchor(t(2026, 0, 5))).toBe(t(2025, 11, 15)); // Jan 5 → prev Dec 15
   });
 });
 

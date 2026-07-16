@@ -8,6 +8,7 @@ import { MonthSelector } from "../../components/MonthSelector";
 import { StatCell } from "../../components/StatCell";
 import { EntryRow } from "../../components/EntryRow";
 import { LedgerSwitcher } from "../../components/LedgerSwitcher";
+import { AppLogo } from "../../components/AppLogo";
 import { Pill } from "../../components/Pill";
 import type { Account, Category, EventType, Ledger, Transaction } from "../../domain/types";
 
@@ -92,15 +93,18 @@ export function Timeline({
   return (
     <main className="min-h-dvh bg-slate-900 text-slate-100">
       <div className="mx-auto max-w-md px-4 pb-28">
-        <header className="py-3">
-          <LedgerSwitcher
-            ledgers={ledgers}
-            activeId={ledgerId}
-            invites={invites}
-            onSelect={onSelectLedger}
-            onCreate={onCreateLedger}
-            onAccept={onAcceptInvite}
-          />
+        <header className="flex items-center gap-2 py-3">
+          <AppLogo />
+          <div className="min-w-0 flex-1">
+            <LedgerSwitcher
+              ledgers={ledgers}
+              activeId={ledgerId}
+              invites={invites}
+              onSelect={onSelectLedger}
+              onCreate={onCreateLedger}
+              onAccept={onAcceptInvite}
+            />
+          </div>
         </header>
 
         <MonthSelector month={month} onShift={(d) => setMonth((m) => shiftMonth(m, d))} />
