@@ -15,6 +15,8 @@ interface QuickEntryProps {
   categories: Category[];
   onSubmit: (draft: EntryDraft) => void;
   onDelete?: () => void;
+  /** When editing, offer "duplicate" — reopen prefilled as a new entry. */
+  onCopy?: () => void;
   onClose: () => void;
 }
 
@@ -51,6 +53,7 @@ export function QuickEntry({
   categories,
   onSubmit,
   onDelete,
+  onCopy,
   onClose,
 }: QuickEntryProps) {
   const { t, i18n } = useTranslation();
@@ -180,9 +183,20 @@ export function QuickEntry({
             ✕
           </button>
           <span className="text-sm font-semibold text-slate-300">
-            {t(initial ? "edit" : "newEntry")}
+            {t(onDelete ? "edit" : "newEntry")}
           </span>
-          <span className="w-8" />
+          {onCopy ? (
+            <button
+              type="button"
+              onClick={onCopy}
+              aria-label={t("duplicate")}
+              className="rounded-full bg-slate-800 px-3 py-1 text-sm text-slate-300"
+            >
+              ⧉
+            </button>
+          ) : (
+            <span className="w-8" />
+          )}
         </header>
 
         <TypeToggle

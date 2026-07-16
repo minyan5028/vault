@@ -33,7 +33,7 @@ export function App() {
 }
 
 /** null = closed · {} = new entry · { tx } = editing an existing one. */
-type Editor = null | { tx?: Transaction };
+type Editor = null | { tx?: Transaction; copy?: boolean };
 
 const activeLedgerKey = (uid: string) => `vault.ledger.${uid}`;
 
@@ -230,16 +230,19 @@ function AuthedApp({ user }: { user: User }) {
 
       {editor && (
         <QuickEntry
-          key={editor.tx?.id ?? "new"}
+          key={editor.copy ? "copy" : (editor.tx?.id ?? "new")}
           initial={editor.tx}
           ledgerId={ledgerId}
           accounts={accounts}
           categories={categories}
           onSubmit={(draft) => {
-            if (editor.tx) transactionRepo.update(ledgerId, editor.tx.id, draft);
+            if (editor.tx && !editor.copy) transactionRepo.update(ledgerId, editor.tx.id, draft);
             else void transactionRepo.add(ledgerId, { ...draft, createdBy: user.uid });
           }}
-          onDelete={editor.tx ? () => deleteTx(editor.tx!.id) : undefined}
+          onDelete={editor.tx && !editor.copy ? () => deleteTx(editor.tx!.id) : undefined}
+          onCopy={
+            editor.tx && !editor.copy ? () => setEditor({ tx: editor.tx, copy: true }) : undefined
+          }
           onClose={() => setEditor(null)}
         />
       )}

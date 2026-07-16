@@ -27,6 +27,7 @@
   "empty": "No entries yet — tap + to add one.",
   "close": "Close",
   "newEntry": "New entry",
+  "duplicate": "Duplicate",
   "edit": "Edit",
   "delete": "Delete",
   "confirmDelete": "Confirm delete",

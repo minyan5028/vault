@@ -36,7 +36,7 @@ export function Recurring({
 }) {
   const { t, i18n } = useTranslation();
   const [rules, setRules] = useState<RecurringRule[]>([]);
-  const [editing, setEditing] = useState<null | { rule?: RecurringRule }>(null);
+  const [editing, setEditing] = useState<null | { rule?: RecurringRule; copy?: boolean }>(null);
 
   useEffect(() => recurringRepo.subscribe(ledgerId, setRules), [ledgerId]);
 
@@ -47,6 +47,12 @@ export function Recurring({
         accounts={accounts}
         categories={categories}
         rule={editing.rule}
+        copy={editing.copy}
+        onCopy={
+          editing.rule && !editing.copy
+            ? () => setEditing({ rule: editing.rule, copy: true })
+            : undefined
+        }
         onClose={() => setEditing(null)}
       />
     );
@@ -114,12 +120,17 @@ function RuleForm({
   accounts,
   categories,
   rule,
+  copy,
+  onCopy,
   onClose,
 }: {
   ledgerId: string;
   accounts: Account[];
   categories: Category[];
   rule?: RecurringRule;
+  /** Copy mode: prefill from `rule` but save as a new rule (not an edit). */
+  copy?: boolean;
+  onCopy?: () => void;
   onClose: () => void;
 }) {
   const { t, i18n } = useTranslation();
@@ -158,7 +169,7 @@ function RuleForm({
       interval: Math.max(1, interval),
       startDate,
     };
-    if (rule) {
+    if (rule && !copy) {
       const patch: Partial<RecurringRule> = { ...input };
       // Moving the start date resets nextDate, so future generation — and the
       // list's displayed "next" date — start there. Already-generated
@@ -186,7 +197,18 @@ function RuleForm({
             ✕
           </button>
           <span className="text-sm font-semibold text-slate-300">{t("recurring")}</span>
-          <span className="w-8" />
+          {onCopy ? (
+            <button
+              type="button"
+              onClick={onCopy}
+              aria-label={t("duplicate")}
+              className="rounded-full bg-slate-800 px-3 py-1 text-sm text-slate-300"
+            >
+              ⧉
+            </button>
+          ) : (
+            <span className="w-8" />
+          )}
         </header>
 
         <TypeToggle
@@ -302,7 +324,7 @@ function RuleForm({
         >
           {t("save")}
         </button>
-        {rule && (
+        {rule && !copy && (
           <button
             type="button"
             onClick={() => {
