@@ -23,12 +23,14 @@ export async function provisionPersonalLedger(user: User): Promise<string> {
 
   const ledgerRef = doc(db, "ledgers", ledgerId);
   // A brand-new user can't read their not-yet-created personal ledger under the
-  // membership rules, so a read error means "doesn't exist yet" → create it.
+  // membership rules, so ONLY a permission-denied read means "doesn't exist yet"
+  // → create it. Any other error (offline, unavailable) must NOT be treated as
+  // missing — otherwise re-seeding an existing ledger would wipe its balances.
   let exists = false;
   try {
     exists = (await getDoc(ledgerRef)).exists();
-  } catch {
-    // read denied under the membership rules → doesn't exist yet
+  } catch (e) {
+    if ((e as { code?: string })?.code !== "permission-denied") throw e;
   }
   if (!exists) {
     await setDoc(ledgerRef, {

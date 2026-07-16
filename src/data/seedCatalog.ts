@@ -35,7 +35,9 @@ export async function seedLedgerCatalog(ledgerId: string): Promise<void> {
       sortOrder: i,
     }),
   );
-  // Empty balance rollup, maintained incrementally by transactionRepo.
-  batch.set(doc(db, "ledgers", ledgerId, "meta", "balances"), { netFlow: {} });
+  // Empty balance rollup, maintained incrementally by transactionRepo. Merge so
+  // that if this ever runs against an existing ledger by mistake, it can't wipe
+  // an established netFlow (merging {} leaves existing keys intact).
+  batch.set(doc(db, "ledgers", ledgerId, "meta", "balances"), { netFlow: {} }, { merge: true });
   await batch.commit();
 }

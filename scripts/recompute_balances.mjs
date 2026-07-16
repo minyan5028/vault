@@ -1,41 +1,54 @@
+/**
+ * Rebuild meta/balances.netFlow from every non-deleted transaction — repair after
+ * the rollup was wiped (seedLedgerCatalog set netFlow:{} when provisionLedger
+ * mis-detected the existing ledger as new). Each account moves in its own
+ * currency: source by amount, a transfer's destination by toAmount.
+ *
+ * Usage: node scripts/recompute_balances.mjs [--commit]
+ */
+import { readFileSync } from "node:fs";
 import { initializeApp, cert } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
-import { readFileSync } from "node:fs";
 
-initializeApp({ credential: cert(JSON.parse(readFileSync("serviceAccountKey.json", "utf8"))) });
+const commit = process.argv.includes("--commit");
+const LEDGER = "SSNCV1RyNeVrzT8kdTrm7ll6fYd2";
+const sa = JSON.parse(readFileSync("serviceAccountKey.json", "utf8"));
+initializeApp({ credential: cert(sa) });
 const db = getFirestore();
-const fmt = (n) => "NT$" + (n / 100).toLocaleString("en-US");
+const led = db.collection("ledgers").doc(LEDGER);
 
-async function recompute(ledgerId) {
-  const snap = await db.collection("ledgers").doc(ledgerId).collection("transactions").get();
-  const netFlow = {};
-  const add = (a, v) => {
-    if (a) netFlow[a] = (netFlow[a] || 0) + v;
-  };
-  let active = 0;
-  snap.forEach((d) => {
-    const t = d.data();
-    if ((t.deletedAt ?? null) !== null) return;
-    active++;
-    if (t.type === "income") add(t.accountId, t.baseAmount);
-    else if (t.type === "expense") add(t.accountId, -t.baseAmount);
-    else if (t.type === "transfer") {
-      add(t.accountId, -t.baseAmount);
-      add(t.toAccountId, t.baseAmount);
-    }
-  });
-  await db.collection("ledgers").doc(ledgerId).collection("meta").doc("balances").set({ netFlow });
-  console.log(ledgerId, "reads=" + snap.size, "active=" + active);
-  for (const [a, v] of Object.entries(netFlow).sort((x, y) => y[1] - x[1]))
-    console.log("   " + a.padEnd(22) + fmt(v));
+const txs = await led.collection("transactions").get();
+const netFlow = {};
+const add = (acc, v) => { if (acc) netFlow[acc] = (netFlow[acc] ?? 0) + v; };
+let n = 0;
+for (const d of txs.docs) {
+  const t = d.data();
+  if (t.deletedAt) continue;
+  n++;
+  const amount = t.amount, toAmount = t.toAmount ?? t.amount;
+  if (t.type === "income") add(t.accountId, amount);
+  else if (t.type === "expense") add(t.accountId, -amount);
+  else if (t.type === "transfer") { add(t.accountId, -amount); add(t.toAccountId, toAmount); }
 }
 
-const [, , ...ledgers] = process.argv;
-for (const l of ledgers) {
-  try {
-    await recompute(l);
-  } catch (e) {
-    console.log(l, "FAILED code=" + (e.code || e.message));
-  }
+// Compare against current + show account balances (opening + netFlow).
+const accts = Object.fromEntries((await led.collection("accounts").get()).docs.map((d) => [d.id, d.data()]));
+const m = (v) => (v / 100).toFixed(2);
+console.log(`${commit ? "COMMIT" : "DRY RUN"} — recomputed from ${n} transactions\n`);
+console.log("account                netFlow          balance(opening+netFlow)");
+for (const id of Object.keys(accts).sort()) {
+  const a = accts[id];
+  const nf = netFlow[id] ?? 0;
+  const bal = (a.openingBalance ?? 0) + nf;
+  console.log(`  ${id.padEnd(22)} ${m(nf).padStart(12)}   ${m(bal).padStart(12)} ${a.currency}`);
 }
+const holdingKeys = Object.keys(netFlow).filter((k) => !accts[k]);
+console.log(`\n(+ ${holdingKeys.length} holding endpoints, not displayed)`);
+
+if (!commit) {
+  console.log("\nDry run — nothing written. Re-run with --commit to apply.");
+  process.exit(0);
+}
+await led.collection("meta").doc("balances").set({ netFlow });
+console.log("\n✓ Committed (meta/balances.netFlow rebuilt).");
 process.exit(0);
