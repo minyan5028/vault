@@ -4,9 +4,9 @@ import { transactionRepo } from "./transactionRepo";
 import type { RecurringRule } from "../domain/types";
 
 function advance(date: Date, rule: RecurringRule): Date {
-  return rule.frequency === "monthly"
-    ? addMonthsClamped(date, rule.interval)
-    : addDays(date, 7 * rule.interval);
+  if (rule.frequency === "yearly") return addMonthsClamped(date, 12 * rule.interval);
+  if (rule.frequency === "monthly") return addMonthsClamped(date, rule.interval);
+  return addDays(date, 7 * rule.interval); // weekly
 }
 
 /**

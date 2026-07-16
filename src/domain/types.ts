@@ -54,7 +54,7 @@ export interface Category {
 /** Financial Event kind. Starts here; grows later (dividend, asset_buy, …). */
 export type EventType = "expense" | "income" | "transfer";
 
-export type RecurringFrequency = "weekly" | "monthly";
+export type RecurringFrequency = "weekly" | "monthly" | "yearly";
 
 /** A template that generates transactions on a schedule (see roadmap). */
 export interface RecurringRule {

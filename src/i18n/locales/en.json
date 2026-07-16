@@ -59,6 +59,7 @@
   "recurring": "Recurring",
   "freq_monthly": "Monthly",
   "freq_weekly": "Weekly",
+  "freq_yearly": "Yearly",
   "every": "Every",
   "startDate": "Start date",
   "backup": "Backup",

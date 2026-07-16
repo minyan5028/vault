@@ -12,7 +12,7 @@ import type {
   RecurringRule,
 } from "../../domain/types";
 
-const FREQS: RecurringFrequency[] = ["monthly", "weekly"];
+const FREQS: RecurringFrequency[] = ["weekly", "monthly", "yearly"];
 
 function safeMinor(text: string): number {
   try {
@@ -158,8 +158,16 @@ function RuleForm({
       interval: Math.max(1, interval),
       startDate,
     };
-    if (rule) recurringRepo.update(ledgerId, rule.id, input);
-    else void recurringRepo.add(ledgerId, input);
+    if (rule) {
+      const patch: Partial<RecurringRule> = { ...input };
+      // Moving the start date resets nextDate, so future generation — and the
+      // list's displayed "next" date — start there. Already-generated
+      // occurrences stay idempotent by their deterministic id.
+      if (rule.startDate.getTime() !== startDate.getTime()) patch.nextDate = startDate;
+      void recurringRepo.update(ledgerId, rule.id, patch);
+    } else {
+      void recurringRepo.add(ledgerId, input);
+    }
     onClose();
   }
 
@@ -248,19 +256,19 @@ function RuleForm({
         )}
 
         {/* Frequency */}
+        <label className="block text-xs text-slate-500">{t("every")}</label>
         <div className="flex items-center gap-2">
-          <label className="text-xs text-slate-500">{t("every")}</label>
           <input
             type="number"
             min={1}
             value={interval}
             onChange={(e) => setInterval(Number(e.target.value) || 1)}
-            className={"w-16 " + field}
+            className="w-20 rounded-lg bg-slate-800 px-3 py-2.5 text-center text-base outline-none [color-scheme:dark]"
           />
           <select
             value={frequency}
             onChange={(e) => setFrequency(e.target.value as RecurringFrequency)}
-            className={"flex-1 " + field}
+            className="flex-1 rounded-lg bg-slate-800 px-3 py-2.5 text-base outline-none [color-scheme:dark]"
           >
             {FREQS.map((f) => (
               <option key={f} value={f}>
