@@ -125,6 +125,10 @@ export function QuickEntry({
 
   function save() {
     if (!canSave || saved) return;
+    // baseAmount is the ledger-currency (TWD) value, locked at entry (ADR-0002),
+    // so income/expense stats aggregate a single currency. A TWD account is 1:1;
+    // a foreign account converts at the current rate.
+    const rate = currency === "TWD" ? 1 : (fx[currency] ?? 1);
     onSubmit({
       type,
       amount: minor,
@@ -133,9 +137,9 @@ export function QuickEntry({
       // otherwise it equals `amount` (kept explicit so an edit can't leave a
       // stale toAmount from a previous cross-currency state).
       toAmount: isCross ? toAmountMinor : minor,
-      baseAmount: minor, // single-currency for now; FX locks here later
-      baseCurrency: currency,
-      fxRate: 1,
+      baseAmount: Math.round(minor * rate),
+      baseCurrency: "TWD",
+      fxRate: rate,
       date,
       categoryId: isTransfer ? null : categoryId,
       accountId,
