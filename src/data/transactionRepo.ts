@@ -334,13 +334,16 @@ export const transactionRepo = {
       }
       tx.update(ref, data);
 
+      const mergedAmount = patch.amount ?? old.amount;
       const merged = {
         type: (patch.type ?? old.type) as EventType,
         accountId: patch.accountId ?? old.accountId,
         toAccountId: patch.toAccountId !== undefined ? patch.toAccountId : (old.toAccountId ?? null),
-        amount: patch.amount ?? old.amount,
+        amount: mergedAmount,
         toAmount: patch.toAmount !== undefined ? patch.toAmount : (old.toAmount ?? old.amount),
-        baseAmount: patch.baseAmount ?? old.baseAmount,
+        // Derive baseAmount from amount × fxRate rather than trusting old.baseAmount,
+        // so editing the amount without also passing baseAmount can't desync stats.
+        baseAmount: patch.baseAmount ?? Math.round(mergedAmount * (patch.fxRate ?? old.fxRate ?? 1)),
         categoryId: patch.categoryId !== undefined ? patch.categoryId : (old.categoryId ?? null),
       };
       const notDeleted = (old.deletedAt ?? null) === null;
