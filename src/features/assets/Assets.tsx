@@ -5,6 +5,7 @@ import { portfolioTotals, toBase } from "../../lib/holdings";
 import { useBalances } from "../../data/useBalances";
 import { useHoldings } from "../../data/useHoldings";
 import type { Account } from "../../domain/types";
+import { AppLogo } from "../../components/AppLogo";
 import { Investments } from "./Investments";
 
 const BASE_CURRENCY = "TWD";
@@ -28,10 +29,12 @@ export function Assets({
   const { holdings, fx } = useHoldings(ledgerId);
   const [showInvestments, setShowInvestments] = useState(false);
 
-  const rows = accounts.map((a) => ({
-    account: a,
-    balance: a.openingBalance + (netFlow[a.id] ?? 0),
-  }));
+  const rows = accounts
+    .filter((a) => !a.archived)
+    .map((a) => ({
+      account: a,
+      balance: a.openingBalance + (netFlow[a.id] ?? 0),
+    }));
   // Net worth values each account's balance into TWD at the current rate (the
   // balance itself is in the account's own currency). Historical transaction
   // stats keep their entry-locked FX (ADR-0002) — this is presentation only.
@@ -56,7 +59,8 @@ export function Assets({
   return (
     <main className="min-h-dvh bg-slate-900 text-slate-100">
       <div className="mx-auto max-w-md px-4 pb-28 pt-4">
-        <header className="py-1">
+        <header className="flex items-center gap-2 py-1">
+          <AppLogo />
           <span className="text-lg font-semibold tracking-tight">{t("assets")}</span>
         </header>
 
@@ -97,11 +101,7 @@ export function Assets({
                 onClick={() => onOpenAccount(r.account, r.balance)}
                 className="flex w-full items-center justify-between py-3 text-left active:bg-slate-800/50"
               >
-                <span
-                  className={"text-sm " + (r.account.archived ? "text-slate-500" : "text-slate-200")}
-                >
-                  {r.account.name}
-                </span>
+                <span className="text-sm text-slate-200">{r.account.name}</span>
                 <span className="text-right">
                   <span className="block text-sm tabular-nums text-slate-100">
                     {formatMoney(r.balance, r.account.currency, locale)}
