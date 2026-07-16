@@ -1,4 +1,4 @@
-import { addDays, addMonthsClamped } from "../lib/date";
+import { addDays, addMonthsClamped, toDateInputValue } from "../lib/date";
 import { recurringRepo } from "./recurringRepo";
 import { transactionRepo } from "./transactionRepo";
 import type { RecurringRule } from "../domain/types";
@@ -24,7 +24,11 @@ export async function materializeRecurring(ledgerId: string, uid: string): Promi
     let generated = 0;
     // Safety cap in case of a bad rule; 400 covers >1yr weekly / 30yr monthly.
     while (next.getTime() <= today.getTime() && generated < 400) {
-      await transactionRepo.add(ledgerId, {
+      // Deterministic id per rule+occurrence → a re-run (partial failure, or a
+      // second device) hits addRecurring's existence check and is skipped
+      // instead of duplicating the transaction and its rollup effect.
+      const id = `${rule.id}_${toDateInputValue(next)}`;
+      await transactionRepo.addRecurring(ledgerId, id, {
         type: rule.type,
         amount: rule.amount,
         currency: rule.currency,

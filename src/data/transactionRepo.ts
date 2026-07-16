@@ -206,6 +206,35 @@ export const transactionRepo = {
     return ref.id;
   },
 
+  /**
+   * Idempotent add at a caller-chosen id, for recurring catch-up: if the doc
+   * already exists (this occurrence was generated before — a partial run, or a
+   * second device), do nothing. Reading in a transaction makes the check +
+   * write atomic, so the rollup can't double-count. Returns true if it created.
+   */
+  async addRecurring(ledgerId: string, id: string, input: NewTransactionInput): Promise<boolean> {
+    return runTransaction(db, async (tx) => {
+      const ref = doc(transactionsCol(ledgerId), id);
+      if ((await tx.get(ref)).exists()) return false;
+      tx.set(ref, {
+        ...input,
+        toAmount: input.toAmount ?? input.amount,
+        date: Timestamp.fromDate(input.date),
+        yearMonth: yearMonthOf(input.date),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        deletedAt: null,
+      });
+      tx.set(rollupRef(ledgerId), rollupDelta(accountDeltas(input, 1)), { merge: true });
+      const mc = monthContribution(input, 1);
+      if (mc) {
+        const ym = yearMonthOf(input.date);
+        tx.set(monthRollupRef(ledgerId, ym), monthRollupDelta(ym, mc), { merge: true });
+      }
+      return true;
+    });
+  },
+
   /** This-month Timeline: not deleted, newest first (composite-index free query). */
   async fetchMonth(ledgerId: string, yearMonth: string): Promise<Transaction[]> {
     const q = query(transactionsCol(ledgerId), where("yearMonth", "==", yearMonth));
