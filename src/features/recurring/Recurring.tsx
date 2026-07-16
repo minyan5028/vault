@@ -13,6 +13,7 @@ import type {
 } from "../../domain/types";
 
 const FREQS: RecurringFrequency[] = ["weekly", "monthly", "yearly"];
+const TYPES: EventType[] = ["expense", "income", "transfer"];
 
 function safeMinor(text: string): number {
   try {
@@ -83,32 +84,45 @@ export function Recurring({
         {rules.length === 0 ? (
           <p className="mt-16 text-center text-sm text-slate-600">{t("empty")}</p>
         ) : (
-          <ul className="divide-y divide-slate-800">
-            {rules.map((r) => {
-              const account = accounts.find((a) => a.id === r.accountId);
-              return (
-                <li key={r.id}>
-                  <button
-                    type="button"
-                    onClick={() => setEditing({ rule: r })}
-                    className="flex w-full items-center gap-3 py-3 text-left active:bg-slate-800/50"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm text-slate-200">{r.title || account?.name}</p>
-                      <p className="text-xs text-slate-500">
-                        {t(`freq_${r.frequency}` as "freq_monthly")}
-                        {r.interval > 1 ? ` ×${r.interval}` : ""} ·{" "}
-                        {toDateInputValue(r.nextDate)}
-                      </p>
-                    </div>
-                    <span className="text-sm tabular-nums text-slate-200">
-                      {formatMoney(r.amount, r.currency, i18n.language)}
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+          TYPES.map((ty) => {
+            const group = rules.filter((r) => r.type === ty);
+            if (group.length === 0) return null;
+            return (
+              <section key={ty} className="mt-4 first:mt-0">
+                <h2 className="mb-1 text-xs uppercase tracking-wide text-slate-400">
+                  {t(`type_${ty}` as "type_expense")}
+                </h2>
+                <ul className="divide-y divide-slate-800">
+                  {group.map((r) => {
+                    const account = accounts.find((a) => a.id === r.accountId);
+                    return (
+                      <li key={r.id}>
+                        <button
+                          type="button"
+                          onClick={() => setEditing({ rule: r })}
+                          className="flex w-full items-center gap-3 py-3 text-left active:bg-slate-800/50"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm text-slate-200">
+                              {r.title || account?.name}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              {t(`freq_${r.frequency}` as "freq_monthly")}
+                              {r.interval > 1 ? ` ×${r.interval}` : ""} ·{" "}
+                              {toDateInputValue(r.nextDate)}
+                            </p>
+                          </div>
+                          <span className="text-sm tabular-nums text-slate-200">
+                            {formatMoney(r.amount, r.currency, i18n.language)}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+            );
+          })
         )}
       </div>
     </div>
