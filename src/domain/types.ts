@@ -161,6 +161,9 @@ export interface Holding {
    *  so already reflected in `shares`/value — kept separately for reference
    *  only; NOT added to cost or net worth. A running total the user maintains. */
   dividendReceived: number;
+  /** Expected annual dividend per share (×100, holding currency), user-entered.
+   *  Reference only (drives current/forward yield); NOT part of net worth. */
+  dividendPerShare: number;
   /** Optional price threshold that flags a holding for re-evaluation (×100). */
   targetPrice: number | null;
   /** When the position was first opened (the initial buy). */

@@ -2,9 +2,23 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { formatMoney, CURRENCIES } from "../../../lib/money";
 import { toDateInputValue, fromDateInputValue } from "../../../lib/date";
-import { valueHolding, applySell } from "../../../lib/holdings";
+import {
+  valueHolding,
+  applySell,
+  avgCost,
+  dividendMetrics,
+  estimatedDividends,
+  yieldOnCost,
+} from "../../../lib/holdings";
 import { holdingRepo, type NewHolding, type TradeInput } from "../../../data/holdingRepo";
-import type { Account, Holding, HoldingClass, Trade, TradeKind } from "../../../domain/types";
+import type {
+  Account,
+  Holding,
+  HoldingClass,
+  PortfolioSnapshot,
+  Trade,
+  TradeKind,
+} from "../../../domain/types";
 import {
   BASE_CURRENCY,
   CLASSES,
@@ -13,8 +27,20 @@ import {
   toShares,
   fromMinor,
   displayShares,
+  atTarget,
+  formatPct,
 } from "./shared";
 import { Gain, Field, CashAccountField } from "./fields";
+
+/** A labelled figure in the buy-info grid (label above, value below). */
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="text-slate-500">{label}</dt>
+      <dd className="tabular-nums text-slate-300">{value}</dd>
+    </div>
+  );
+}
 
 /** One holding: current value/gain/realized, buy/sell actions, and its trades. */
 export function HoldingDetail({
@@ -22,6 +48,7 @@ export function HoldingDetail({
   holding,
   accounts,
   fx,
+  snapshots,
   uid,
   onBack,
 }: {
@@ -29,6 +56,7 @@ export function HoldingDetail({
   holding: Holding;
   accounts: Account[];
   fx: Record<string, number>;
+  snapshots: PortfolioSnapshot[];
   uid: string;
   onBack: () => void;
 }) {
@@ -36,6 +64,21 @@ export function HoldingDetail({
   const locale = i18n.language;
   const v = valueHolding(holding, fx);
   const [action, setAction] = useState<"none" | "buy" | "sell" | "edit">("none");
+
+  // Trades drive both the log and the DRIP-dividend estimate, so subscribe once
+  // here and hand them down rather than re-subscribing in the log.
+  const [trades, setTrades] = useState<Trade[]>([]);
+  useEffect(() => {
+    setTrades([]);
+    return holdingRepo.subscribeTrades(ledgerId, holding.id, setTrades);
+  }, [ledgerId, holding.id]);
+
+  const now = Date.now();
+  const dm = holding.class === "dividend" ? dividendMetrics(holding, v.valueCur, now) : null;
+  // DRIP dividends reverse-derived from snapshot share growth (see the lib fn).
+  const estDiv =
+    holding.class === "dividend" ? estimatedDividends(holding.id, snapshots, trades) : 0;
+  const estYield = yieldOnCost(estDiv, holding.cost, holding.buyDate, now);
 
   return (
     <main className="min-h-dvh bg-slate-900 text-slate-100">
@@ -51,7 +94,14 @@ export function HoldingDetail({
 
         <div className="border-b border-slate-800 pb-3">
           <div className="flex items-baseline justify-between">
-            <span className="text-lg font-semibold tracking-tight">{holding.ticker}</span>
+            <span className="flex items-center gap-2 text-lg font-semibold tracking-tight">
+              {holding.ticker}
+              {atTarget(holding) && (
+                <span className="rounded-full bg-amber-400/15 px-1.5 py-0.5 text-[10px] font-medium leading-none text-amber-400">
+                  {t("atTarget")}
+                </span>
+              )}
+            </span>
             <p className="text-lg font-semibold tabular-nums">
               {formatMoney(v.valueBase, BASE_CURRENCY, locale)}
             </p>
@@ -61,16 +111,35 @@ export function HoldingDetail({
               {displayShares(holding.shares)} × {formatMoney(holding.price, holding.currency, locale)}
             </span>
             <span>
-              {t("unrealized")} <Gain minor={v.gainBase} locale={locale} />
+              {t("unrealized")} <Gain minor={v.gainBase} locale={locale} pct={v.gainPct} />
             </span>
           </div>
+
+          {/* Buy info — cost basis, average cost, when and the review target. */}
+          <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+            <Stat label={t("cost")} value={formatMoney(holding.cost, holding.currency, locale)} />
+            <Stat
+              label={t("avgCost")}
+              value={formatMoney(avgCost(holding.cost, holding.shares), holding.currency, locale)}
+            />
+            {holding.buyDate && (
+              <Stat label={t("buyDate")} value={holding.buyDate.toLocaleDateString(locale)} />
+            )}
+            {holding.targetPrice != null && (
+              <Stat
+                label={t("targetPrice")}
+                value={formatMoney(holding.targetPrice, holding.currency, locale)}
+              />
+            )}
+          </dl>
+
           {holding.realizedGain !== 0 && (
-            <p className="mt-0.5 text-right text-xs text-slate-500">
+            <p className="mt-1 text-right text-xs text-slate-500">
               {t("realizedGain")}{" "}
               <Gain minor={holding.realizedGain} currency={holding.currency} locale={locale} />
             </p>
           )}
-          {holding.dividendReceived > 0 && (
+          {holding.class !== "dividend" && holding.dividendReceived > 0 && (
             <p className="mt-0.5 text-right text-xs text-slate-500">
               {t("dividendReceived")}{" "}
               <span className="tabular-nums text-sky-400">
@@ -79,6 +148,62 @@ export function HoldingDetail({
             </p>
           )}
         </div>
+
+        {/* Dividend reference — income & yields; never part of net worth. */}
+        {dm && (holding.dividendReceived > 0 || dm.annualIncome > 0 || estDiv > 0) && (
+          <dl className="mt-3 space-y-1.5 rounded-lg bg-slate-800/40 p-3 text-xs">
+            {estDiv > 0 && (
+              <div className="flex items-baseline justify-between">
+                <dt className="text-slate-500">{t("estimatedDividends")}</dt>
+                <dd className="text-right tabular-nums text-sky-400">
+                  {formatMoney(estDiv, holding.currency, locale)}
+                  {estYield.onCost != null && (
+                    <span className="ml-1 text-slate-400">
+                      · {formatPct(estYield.onCost)} {t("yieldOnCost")}
+                      {estYield.annualized != null &&
+                        ` (${formatPct(estYield.annualized)} ${t("annualized")})`}
+                    </span>
+                  )}
+                </dd>
+              </div>
+            )}
+            {dm.annualIncome > 0 && (
+              <div className="flex items-baseline justify-between">
+                <dt className="text-slate-500">{t("annualIncome")}</dt>
+                <dd className="text-right tabular-nums text-sky-400">
+                  {formatMoney(dm.annualIncome, holding.currency, locale)}
+                  {dm.currentYield != null && (
+                    <span className="ml-1 text-slate-400">
+                      · {formatPct(dm.currentYield)} {t("currentYield")}
+                    </span>
+                  )}
+                  {dm.forwardYieldOnCost != null && (
+                    <span className="ml-1 text-slate-400">
+                      · {formatPct(dm.forwardYieldOnCost)} {t("yieldOnCost")}
+                    </span>
+                  )}
+                </dd>
+              </div>
+            )}
+            {holding.dividendReceived > 0 && (
+              <div className="flex items-baseline justify-between">
+                <dt className="text-slate-500">
+                  {t("dividendReceived")} · {t("cumulative")}
+                </dt>
+                <dd className="text-right tabular-nums text-sky-400">
+                  {formatMoney(holding.dividendReceived, holding.currency, locale)}
+                  {dm.cumulativeYieldOnCost != null && (
+                    <span className="ml-1 text-slate-400">
+                      · {formatPct(dm.cumulativeYieldOnCost)} {t("yieldOnCost")}
+                      {dm.annualizedYieldOnCost != null &&
+                        ` (${formatPct(dm.annualizedYieldOnCost)} ${t("annualized")})`}
+                    </span>
+                  )}
+                </dd>
+              </div>
+            )}
+          </dl>
+        )}
 
         <div className="mt-3 flex gap-2 text-xs">
           <button
@@ -138,7 +263,7 @@ export function HoldingDetail({
           />
         )}
 
-        <TradeLog ledgerId={ledgerId} holding={holding} locale={locale} />
+        <TradeLog trades={trades} holding={holding} locale={locale} />
       </div>
     </main>
   );
@@ -167,6 +292,9 @@ function EditHoldingForm({
   const [buyDate, setBuyDate] = useState(holding.buyDate ? toDateInputValue(holding.buyDate) : "");
   const [dividend, setDividend] = useState(
     holding.dividendReceived ? fromMinor(holding.dividendReceived) : "",
+  );
+  const [divPerShare, setDivPerShare] = useState(
+    holding.dividendPerShare ? fromMinor(holding.dividendPerShare) : "",
   );
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -226,14 +354,36 @@ function EditHoldingForm({
           />
         </Field>
       </div>
-      <Field label={`${t("dividendReceived")} (${holding.currency}, ${t("cumulative")})`}>
-        <input
-          className={inputClass}
-          inputMode="decimal"
-          value={dividend}
-          onChange={(e) => setDividend(e.target.value)}
-        />
-      </Field>
+      {cls === "dividend" && (
+        <div className="flex gap-2">
+          <Field label={`${t("dividendReceived")} (${t("cumulative")})`}>
+            <input
+              className={inputClass}
+              inputMode="decimal"
+              value={dividend}
+              onChange={(e) => setDividend(e.target.value)}
+            />
+          </Field>
+          <Field label={t("dividendPerShare")}>
+            <input
+              className={inputClass}
+              inputMode="decimal"
+              value={divPerShare}
+              onChange={(e) => setDivPerShare(e.target.value)}
+            />
+          </Field>
+        </div>
+      )}
+      {cls !== "dividend" && (
+        <Field label={`${t("dividendReceived")} (${holding.currency}, ${t("cumulative")})`}>
+          <input
+            className={inputClass}
+            inputMode="decimal"
+            value={dividend}
+            onChange={(e) => setDividend(e.target.value)}
+          />
+        </Field>
+      )}
       <div className="flex justify-end gap-3 pt-1 text-sm">
         <button type="button" onClick={onCancel} className="text-slate-400">
           {t("cancel")}
@@ -250,6 +400,7 @@ function EditHoldingForm({
               targetPrice: target ? toMinor(target) : null,
               buyDate: buyDate ? fromDateInputValue(buyDate) : null,
               dividendReceived: dividend ? toMinor(dividend) : 0,
+              dividendPerShare: divPerShare ? toMinor(divPerShare) : 0,
             });
           }}
           className="font-medium text-emerald-400 disabled:text-slate-600"
@@ -402,26 +553,22 @@ function TradeForm({
 }
 
 function TradeLog({
-  ledgerId,
+  trades,
   holding,
   locale,
 }: {
-  ledgerId: string;
+  trades: Trade[];
   holding: Holding;
   locale: string;
 }) {
   const { t } = useTranslation();
-  const [trades, setTrades] = useState<Trade[]>([]);
-  useEffect(() => {
-    setTrades([]);
-    return holdingRepo.subscribeTrades(ledgerId, holding.id, setTrades);
-  }, [ledgerId, holding.id]);
   if (trades.length === 0) return null;
+  const ordered = [...trades].sort((a, b) => b.date.getTime() - a.date.getTime());
   return (
     <section className="mt-5">
       <h2 className="mb-1 text-xs uppercase tracking-wide text-slate-400">{t("trades")}</h2>
       <ul className="divide-y divide-slate-800 text-sm">
-        {trades.map((tr) => (
+        {ordered.map((tr) => (
           <li key={tr.id} className="flex items-center gap-3 py-2">
             <span
               className={

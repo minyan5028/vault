@@ -2,17 +2,20 @@ import { type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { formatMoney } from "../../../lib/money";
 import type { Account } from "../../../domain/types";
-import { BASE_CURRENCY, inputClass } from "./shared";
+import { BASE_CURRENCY, inputClass, formatPct } from "./shared";
 
-/** Gain shown green when positive, rose when negative. */
+/** Gain shown green when positive, rose when negative. Optionally appends a
+ *  percentage (e.g. return on cost) in the same colour. */
 export function Gain({
   minor,
   currency,
   locale,
+  pct,
 }: {
   minor: number;
   currency?: string;
   locale: string;
+  pct?: number | null;
 }) {
   const sign = minor > 0 ? "+" : minor < 0 ? "−" : "";
   const color = minor > 0 ? "text-emerald-400" : minor < 0 ? "text-rose-400" : "text-slate-400";
@@ -20,6 +23,7 @@ export function Gain({
     <span className={"tabular-nums " + color}>
       {sign}
       {formatMoney(Math.abs(minor), currency ?? BASE_CURRENCY, locale)}
+      {pct != null && <span className="ml-1 text-xs opacity-80">{formatPct(pct)}</span>}
     </span>
   );
 }

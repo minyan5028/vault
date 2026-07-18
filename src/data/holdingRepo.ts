@@ -50,6 +50,7 @@ export interface NewHolding {
   shares: number;
   price: number;
   targetPrice: number | null;
+  dividendPerShare: number;
   buyDate: Date | null;
   /** Cash account the opening buy is paid from; null keeps the holding
    *  standalone (no cash leg). */
@@ -137,6 +138,7 @@ function toHolding(s: QueryDocumentSnapshot<DocumentData>): Holding {
     pricedAt: (d.pricedAt as Timestamp | null)?.toDate() ?? null,
     realizedGain: d.realizedGain ?? 0,
     dividendReceived: d.dividendReceived ?? 0,
+    dividendPerShare: d.dividendPerShare ?? 0,
     targetPrice: d.targetPrice ?? null,
     buyDate: (d.buyDate as Timestamp | null)?.toDate() ?? null,
     archived: d.archived ?? false,

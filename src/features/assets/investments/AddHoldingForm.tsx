@@ -25,6 +25,7 @@ export function AddHoldingForm({
   const [cost, setCost] = useState("");
   const [costEdited, setCostEdited] = useState(false);
   const [target, setTarget] = useState("");
+  const [divPerShare, setDivPerShare] = useState("");
   const [buyDate, setBuyDate] = useState("");
   const [fundingAccountId, setFundingAccountId] = useState("");
   const valid = ticker.trim() !== "" && shares !== "" && price !== "";
@@ -120,6 +121,16 @@ export function AddHoldingForm({
           />
         </Field>
       </div>
+      {cls === "dividend" && (
+        <Field label={t("dividendPerShare")}>
+          <input
+            className={inputClass}
+            inputMode="decimal"
+            value={divPerShare}
+            onChange={(e) => setDivPerShare(e.target.value)}
+          />
+        </Field>
+      )}
       <CashAccountField
         label={t("fundingAccount")}
         accounts={accounts}
@@ -144,6 +155,7 @@ export function AddHoldingForm({
               price: toMinor(price),
               cost: toMinor(costValue),
               targetPrice: target ? toMinor(target) : null,
+              dividendPerShare: divPerShare ? toMinor(divPerShare) : 0,
               buyDate: buyDate ? fromDateInputValue(buyDate) : null,
               fundingAccountId: fundingAccountId || null,
             })

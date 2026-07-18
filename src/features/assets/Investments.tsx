@@ -6,7 +6,7 @@ import { holdingRepo } from "../../data/holdingRepo";
 import { useHoldings } from "../../data/useHoldings";
 import { useSnapshots } from "../../data/useSnapshots";
 import type { Account } from "../../domain/types";
-import { BASE_CURRENCY, CLASSES, displayShares } from "./investments/shared";
+import { BASE_CURRENCY, CLASSES, displayShares, atTarget } from "./investments/shared";
 import { Gain } from "./investments/fields";
 import { ValueTrend } from "./investments/ValueTrend";
 import { AddHoldingForm } from "./investments/AddHoldingForm";
@@ -47,6 +47,7 @@ export function Investments({
         holding={selected}
         accounts={accounts}
         fx={fx}
+        snapshots={snapshots}
         uid={uid}
         onBack={() => setSelectedId(null)}
       />
@@ -71,7 +72,11 @@ export function Investments({
             <p className="text-lg font-semibold tabular-nums">
               {formatMoney(totals.valueBase, BASE_CURRENCY, locale)}
             </p>
-            <Gain minor={totals.gainBase} locale={locale} />
+            <Gain
+              minor={totals.gainBase}
+              locale={locale}
+              pct={totals.costBase > 0 ? totals.gainBase / totals.costBase : null}
+            />
           </div>
         </div>
         {totals.realizedBase !== 0 && (
@@ -140,7 +145,15 @@ export function Investments({
                   <h2 className="uppercase tracking-wide text-slate-400">{t(`class_${cls}`)}</h2>
                   <span className="tabular-nums text-slate-500">
                     {formatMoney(sub.valueBase, BASE_CURRENCY, locale)} ·{" "}
-                    <Gain minor={sub.gainBase} locale={locale} />
+                    <Gain
+                      minor={sub.gainBase}
+                      locale={locale}
+                      pct={
+                        sub.valueBase - sub.gainBase > 0
+                          ? sub.gainBase / (sub.valueBase - sub.gainBase)
+                          : null
+                      }
+                    />
                   </span>
                 </div>
                 <ul className="divide-y divide-slate-800">
@@ -154,7 +167,14 @@ export function Investments({
                           className="flex w-full items-center gap-3 py-2 text-left text-sm active:bg-slate-800/50"
                         >
                           <div className="min-w-0 flex-1">
-                            <p className="truncate text-slate-200">{h.ticker}</p>
+                            <p className="flex items-center gap-1.5 truncate text-slate-200">
+                              {h.ticker}
+                              {atTarget(h) && (
+                                <span className="rounded-full bg-amber-400/15 px-1.5 py-0.5 text-[10px] font-medium leading-none text-amber-400">
+                                  {t("atTarget")}
+                                </span>
+                              )}
+                            </p>
                             <p className="text-xs text-slate-500">
                               {displayShares(h.shares)} × {formatMoney(h.price, h.currency, locale)}
                             </p>
@@ -163,7 +183,7 @@ export function Investments({
                             <p className="tabular-nums text-slate-100">
                               {formatMoney(v.valueBase, BASE_CURRENCY, locale)}
                             </p>
-                            <Gain minor={v.gainBase} locale={locale} />
+                            <Gain minor={v.gainBase} locale={locale} pct={v.gainPct} />
                           </div>
                           <span className="text-slate-600">›</span>
                         </button>
