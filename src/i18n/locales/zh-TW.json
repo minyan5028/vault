@@ -57,6 +57,7 @@
   "withdrawals": "提款",
   "balance": "結餘",
   "closingBalance": "月底結餘",
+  "addOnDay": "在 {{day}} 新增一筆",
   "catalog": "分類與帳戶",
   "recurring": "重複設定",
   "freq_monthly": "每月",

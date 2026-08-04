@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { formatMoney } from "../../lib/money";
-import { yearMonthOf, shiftMonth } from "../../lib/date";
+import { yearMonthOf, shiftMonth, fromDateInputValue } from "../../lib/date";
 import { groupByDay, dayLabel } from "../../lib/grouping";
 import { useMonthTransactions } from "../../data/useMonthTransactions";
 import { MonthSelector } from "../../components/MonthSelector";
@@ -30,6 +30,7 @@ export function Timeline({
   onCreateLedger,
   onAcceptInvite,
   onEdit,
+  onAddOnDate,
   onDelete,
 }: {
   ledgerId: string;
@@ -42,6 +43,8 @@ export function Timeline({
   onCreateLedger: (name: string) => void;
   onAcceptInvite: (id: string) => void;
   onEdit: (tx: Transaction) => void;
+  /** Tap a day heading to record another event on that day. */
+  onAddOnDate: (date: Date) => void;
   onDelete: (tx: Transaction) => void;
 }) {
   const { t, i18n } = useTranslation();
@@ -189,14 +192,19 @@ export function Timeline({
           <div className="mt-4 space-y-5">
             {groups.map(([day, items]) => (
               <section key={day}>
-                <div className="mb-1 flex items-center justify-between text-xs">
-                  <h2 className="uppercase tracking-wide text-slate-400">
+                <button
+                  type="button"
+                  onClick={() => onAddOnDate(fromDateInputValue(day))}
+                  aria-label={t("addOnDay", { day: dayLabel(day, locale, t) })}
+                  className="mb-1 flex w-full items-center justify-between text-xs active:opacity-60"
+                >
+                  <span className="uppercase tracking-wide text-slate-400">
                     {dayLabel(day, locale, t)}
-                  </h2>
+                  </span>
                   <span className="tabular-nums text-slate-500">
                     {formatMoney(totals(items).net, BASE_CURRENCY, locale)}
                   </span>
-                </div>
+                </button>
                 <ul className="divide-y divide-slate-800">
                   {items.map((e) => (
                     <EntryRow

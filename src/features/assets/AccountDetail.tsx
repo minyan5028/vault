@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { yearMonthOf, shiftMonth } from "../../lib/date";
+import { yearMonthOf, shiftMonth, fromDateInputValue } from "../../lib/date";
 import { groupByDay, dayLabel } from "../../lib/grouping";
 import { useAccountTransactions } from "../../data/useAccountTransactions";
 import { balanceAsOfMonth, depositsWithdrawals, runningBalances } from "../../lib/balance";
@@ -18,6 +18,7 @@ export function AccountDetail({
   accounts,
   categories,
   onEdit,
+  onAddOnDate,
   onDelete,
   onBack,
 }: {
@@ -26,6 +27,8 @@ export function AccountDetail({
   accounts: Account[];
   categories: Category[];
   onEdit: (tx: Transaction) => void;
+  /** Tap a day heading to record another event on that day, in this account. */
+  onAddOnDate: (date: Date) => void;
   onDelete: (tx: Transaction) => void;
   onBack: () => void;
 }) {
@@ -93,9 +96,14 @@ export function AccountDetail({
           <div className="mt-4 space-y-5">
             {groups.map(([day, items]) => (
               <section key={day}>
-                <h2 className="mb-1 text-xs uppercase tracking-wide text-slate-400">
+                <button
+                  type="button"
+                  onClick={() => onAddOnDate(fromDateInputValue(day))}
+                  aria-label={t("addOnDay", { day: dayLabel(day, locale, t) })}
+                  className="mb-1 flex w-full text-xs uppercase tracking-wide text-slate-400 active:opacity-60"
+                >
                   {dayLabel(day, locale, t)}
-                </h2>
+                </button>
                 <ul className="divide-y divide-slate-800">
                   {items.map((e) => (
                     <EntryRow

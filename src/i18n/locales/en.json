@@ -57,6 +57,7 @@
   "withdrawals": "Withdrawals",
   "balance": "Balance",
   "closingBalance": "Closing balance",
+  "addOnDay": "Add an entry on {{day}}",
   "catalog": "Accounts & Categories",
   "recurring": "Recurring",
   "freq_monthly": "Monthly",

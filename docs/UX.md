@@ -122,7 +122,8 @@ The screen is optimized for thumb usage and speed.
 * Amount input always focuses first
 * Category defaults are predictive
 * Account defaults to last used
-* Date defaults to today
+* Date defaults to today — unless entry was opened from a day heading, where
+  the user named the day and that becomes the default (see Timeline below)
 * Title is optional, not required
 
 ---
@@ -182,8 +183,16 @@ The timeline is the main review interface.
 * Tap → edit
 * Swipe → delete (soft delete)
 * Long press → additional actions
+* Tap a **day heading** → Quick Entry for that day
 
 No complex navigation hierarchy.
+
+Tapping the day heading exists for back-filling: recording several events for a
+past day (a trip, a weekend) otherwise costs a date-picker interaction per
+entry. The heading only exists where a day already has entries, so this is a
+shortcut for days already in view, not a replacement for the ＋ (FAB), which
+remains the way to record on any date. The same heading appears in Account
+Detail, where it also prefills the account being viewed.
 
 ---
 

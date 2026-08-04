@@ -10,6 +10,15 @@ import { TypeToggle } from "../../components/TypeToggle";
 interface QuickEntryProps {
   /** When present, edit this transaction instead of creating a new one. */
   initial?: Transaction;
+  /**
+   * New entry only: the date to start on, instead of today. Set when entry was
+   * opened from a day heading — the user named the day, so it beats the "date
+   * defaults to today" rule (docs/UX.md). Kept separate from `initial` so that
+   * prefilling a date can never be mistaken for editing an existing event.
+   */
+  initialDate?: Date;
+  /** New entry only: the account to start on, instead of the first/last used. */
+  initialAccountId?: string;
   ledgerId: string;
   accounts: Account[];
   categories: Category[];
@@ -48,6 +57,8 @@ function parseMinor(text: string): number {
  */
 export function QuickEntry({
   initial,
+  initialDate,
+  initialAccountId,
   ledgerId,
   accounts,
   categories,
@@ -60,7 +71,9 @@ export function QuickEntry({
 
   const [type, setType] = useState<EventType>(initial?.type ?? "expense");
   const [amountText, setAmountText] = useState(initial ? String(toMajor(initial.amount)) : "");
-  const [accountId, setAccountId] = useState(initial?.accountId ?? accounts[0]?.id ?? "");
+  const [accountId, setAccountId] = useState(
+    initial?.accountId ?? initialAccountId ?? accounts[0]?.id ?? "",
+  );
   const [toAccountId, setToAccountId] = useState(
     initial?.toAccountId ?? accounts[1]?.id ?? accounts[0]?.id ?? "",
   );
@@ -70,7 +83,7 @@ export function QuickEntry({
       : (categories.find((c) => c.type === "expense" && !c.archived)?.id ?? null),
   );
   const [title, setTitle] = useState(initial?.title ?? "");
-  const [date, setDate] = useState<Date>(() => initial?.date ?? new Date());
+  const [date, setDate] = useState<Date>(() => initial?.date ?? initialDate ?? new Date());
   const [showNote, setShowNote] = useState(!!initial?.note);
   const [note, setNote] = useState(initial?.note ?? "");
   const [saved, setSaved] = useState(false);

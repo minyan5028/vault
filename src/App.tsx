@@ -33,7 +33,9 @@ export function App() {
 }
 
 /** null = closed · {} = new entry · { tx } = editing an existing one. */
-type Editor = null | { tx?: Transaction; copy?: boolean };
+/** `tx` edits an existing event; `date`/`accountId` only prefill a new one
+ *  (opened from a day heading), so they can never trigger an update. */
+type Editor = null | { tx?: Transaction; copy?: boolean; date?: Date; accountId?: string };
 
 const activeLedgerKey = (uid: string) => `vault.ledger.${uid}`;
 
@@ -168,6 +170,7 @@ function AuthedApp({ user }: { user: User }) {
           onCreateLedger={createLedger}
           onAcceptInvite={acceptInvite}
           onEdit={(tx) => setEditor({ tx })}
+          onAddOnDate={(date) => setEditor({ date })}
           onDelete={(tx) => deleteTx(tx.id)}
         />
       )}
@@ -222,6 +225,7 @@ function AuthedApp({ user }: { user: User }) {
           accounts={accounts}
           categories={categories}
           onEdit={(tx) => setEditor({ tx })}
+          onAddOnDate={(date) => setEditor({ date, accountId: accountView.id })}
           onDelete={(tx) => deleteTx(tx.id)}
           onBack={() => setAccountView(null)}
         />
@@ -229,8 +233,15 @@ function AuthedApp({ user }: { user: User }) {
 
       {editor && (
         <QuickEntry
-          key={editor.copy ? "copy" : (editor.tx?.id ?? "new")}
+          // Remount per target: two different day headings both yield a "new"
+          // editor, and without the date in the key React would keep the first
+          // one's state (and its date).
+          key={
+            editor.copy ? "copy" : (editor.tx?.id ?? `new-${editor.date?.getTime() ?? ""}`)
+          }
           initial={editor.tx}
+          initialDate={editor.date}
+          initialAccountId={editor.accountId}
           ledgerId={ledgerId}
           accounts={accounts}
           categories={categories}
