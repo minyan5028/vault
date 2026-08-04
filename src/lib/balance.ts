@@ -94,6 +94,28 @@ export function depositsWithdrawals(
 }
 
 /**
+ * Closing balance for one account at the end of `yearMonth` — every transaction
+ * up to and including that month, applied to `openingBalance`. Order-independent
+ * (a sum), so the caller needn't sort.
+ *
+ * Derived on the spot from the account's history, which the detail view already
+ * holds in full. Deliberately NOT stored per month: a saved monthly figure would
+ * have to be rewritten for every later month whenever an old entry is edited,
+ * and any missed write would silently desync — the same failure mode as the
+ * balance rollup. Transactions stay the only source of truth (DATA_MODEL.md).
+ */
+export function balanceAsOfMonth(
+  txns: readonly Transaction[],
+  accountId: string,
+  openingBalance: number,
+  yearMonth: string,
+): number {
+  let balance = openingBalance;
+  for (const tx of txns) if (tx.yearMonth <= yearMonth) balance += effectOn(tx, accountId);
+  return balance;
+}
+
+/**
  * Running balance after each transaction for one account, given a starting
  * balance. Applies `txns` in the order provided (caller sorts chronologically).
  * Returns a map of transaction id → balance after that transaction.

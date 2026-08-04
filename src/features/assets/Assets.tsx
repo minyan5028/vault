@@ -21,7 +21,7 @@ export function Assets({
   ledgerId: string;
   accounts: Account[];
   uid: string;
-  onOpenAccount: (account: Account, balance: number) => void;
+  onOpenAccount: (account: Account) => void;
 }) {
   const { t, i18n } = useTranslation();
   const locale = i18n.language;
@@ -98,7 +98,7 @@ export function Assets({
             <li key={r.account.id}>
               <button
                 type="button"
-                onClick={() => onOpenAccount(r.account, r.balance)}
+                onClick={() => onOpenAccount(r.account)}
                 className="flex w-full items-center justify-between py-3 text-left active:bg-slate-800/50"
               >
                 <span className="text-sm text-slate-200">{r.account.name}</span>

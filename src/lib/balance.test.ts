@@ -6,6 +6,7 @@ import {
   depositsWithdrawals,
   runningBalances,
   pruneZeroDeltas,
+  balanceAsOfMonth,
 } from "./balance";
 import type { EventType, Transaction } from "../domain/types";
 
@@ -104,6 +105,39 @@ describe("pruneZeroDeltas", () => {
     for (const m of [accountDeltas(old, -1), accountDeltas({ ...old, amount: 600 }, 1)])
       for (const [k, v] of Object.entries(m)) deltas[k] = (deltas[k] ?? 0) + v;
     expect(pruneZeroDeltas(deltas)).toEqual({ a: -100 });
+  });
+});
+
+describe("balanceAsOfMonth", () => {
+  const opening = 10000;
+  const history = [
+    tx({ id: "jun", type: "expense", accountId: "a", baseAmount: 3000 }),
+    tx({ id: "jul", type: "income", accountId: "a", baseAmount: 5000 }),
+    tx({ id: "aug", type: "expense", accountId: "a", baseAmount: 2000 }),
+  ];
+  history[0].yearMonth = "2026-06";
+  history[1].yearMonth = "2026-07";
+  history[2].yearMonth = "2026-08";
+
+  it("closes each month at the balance carried into the next", () => {
+    expect(balanceAsOfMonth(history, "a", opening, "2026-06")).toBe(7000);
+    expect(balanceAsOfMonth(history, "a", opening, "2026-07")).toBe(12000);
+    expect(balanceAsOfMonth(history, "a", opening, "2026-08")).toBe(10000);
+  });
+
+  it("carries the previous close through a month with no activity", () => {
+    expect(balanceAsOfMonth(history, "a", opening, "2026-09")).toBe(10000);
+  });
+
+  it("is the opening balance before any transaction exists", () => {
+    expect(balanceAsOfMonth(history, "a", opening, "2026-05")).toBe(opening);
+  });
+
+  it("counts a transfer's destination leg in the destination's own amount", () => {
+    const t = tx({ type: "transfer", accountId: "a", toAccountId: "b", baseAmount: 42240, toAmount: 132000 });
+    t.yearMonth = "2026-07";
+    expect(balanceAsOfMonth([t], "a", 0, "2026-07")).toBe(-42240);
+    expect(balanceAsOfMonth([t], "b", 0, "2026-07")).toBe(132000);
   });
 });
 

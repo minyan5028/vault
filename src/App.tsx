@@ -45,7 +45,7 @@ function AuthedApp({ user }: { user: User }) {
   );
   const [tab, setTab] = useState<Tab>("timeline");
   const [editor, setEditor] = useState<Editor>(null);
-  const [accountView, setAccountView] = useState<{ account: Account; balance: number } | null>(null);
+  const [accountView, setAccountView] = useState<Account | null>(null);
   const [undoId, setUndoId] = useState<string | null>(null);
   // Optimistic ledgers shown immediately after creation, until the live query
   // catches up (so a new ledger appears in the switcher without a refresh).
@@ -185,7 +185,7 @@ function AuthedApp({ user }: { user: User }) {
           ledgerId={ledgerId}
           accounts={accounts}
           uid={user.uid}
-          onOpenAccount={(account, balance) => setAccountView({ account, balance })}
+          onOpenAccount={setAccountView}
         />
       )}
       {tab === "settings" && (
@@ -218,8 +218,7 @@ function AuthedApp({ user }: { user: User }) {
       {accountView && (
         <AccountDetail
           ledgerId={ledgerId}
-          account={accountView.account}
-          balance={accountView.balance}
+          account={accountView}
           accounts={accounts}
           categories={categories}
           onEdit={(tx) => setEditor({ tx })}

@@ -3,18 +3,18 @@ import { useTranslation } from "react-i18next";
 import { yearMonthOf, shiftMonth } from "../../lib/date";
 import { groupByDay, dayLabel } from "../../lib/grouping";
 import { useAccountTransactions } from "../../data/useAccountTransactions";
-import { depositsWithdrawals, runningBalances } from "../../lib/balance";
+import { balanceAsOfMonth, depositsWithdrawals, runningBalances } from "../../lib/balance";
 import { MonthSelector } from "../../components/MonthSelector";
 import { StatCell } from "../../components/StatCell";
 import { EntryRow } from "../../components/EntryRow";
 import type { Account, Category, Transaction } from "../../domain/types";
 
 /** One account's transactions — scoped to that account (no full-ledger scan),
- *  with per-row running balance over its full history. */
+ *  with per-row running balance and a closing balance for the selected month,
+ *  both derived from that history (never from the ledger's rollup cache). */
 export function AccountDetail({
   ledgerId,
   account,
-  balance,
   accounts,
   categories,
   onEdit,
@@ -23,7 +23,6 @@ export function AccountDetail({
 }: {
   ledgerId: string;
   account: Account;
-  balance: number;
   accounts: Account[];
   categories: Category[];
   onEdit: (tx: Transaction) => void;
@@ -40,6 +39,16 @@ export function AccountDetail({
     () => depositsWithdrawals(mine, account.id),
     [mine, account.id],
   );
+
+  // Closing balance for the month on screen, derived from this account's own
+  // history rather than the `balance` prop (the ledger-wide rollup cache): the
+  // figure has to follow the month selector, and deriving it keeps this view
+  // correct even if the cache drifts. For the current month the two agree.
+  const closing = useMemo(
+    () => balanceAsOfMonth(history, account.id, account.openingBalance, month),
+    [history, account.id, account.openingBalance, month],
+  );
+  const isCurrentMonth = month === yearMonthOf(new Date());
 
   // Running balance from the full account history (oldest first), keyed by id.
   const runningMap = useMemo(() => {
@@ -71,7 +80,11 @@ export function AccountDetail({
         <div className="mt-1 grid grid-cols-3 gap-2 border-y border-slate-800 py-3 text-center">
           <StatCell label={t("deposits")} minor={deposits} className="text-sky-400" currency={account.currency} />
           <StatCell label={t("withdrawals")} minor={withdrawals} className="text-rose-400" currency={account.currency} />
-          <StatCell label={t("balance")} minor={balance} currency={account.currency} />
+          <StatCell
+            label={isCurrentMonth ? t("balance") : t("closingBalance")}
+            minor={closing}
+            currency={account.currency}
+          />
         </div>
 
         {mine.length === 0 ? (
