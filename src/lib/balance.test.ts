@@ -5,6 +5,7 @@ import {
   netFlowByAccount,
   depositsWithdrawals,
   runningBalances,
+  pruneZeroDeltas,
 } from "./balance";
 import type { EventType, Transaction } from "../domain/types";
 
@@ -63,6 +64,46 @@ describe("accountDeltas", () => {
     expect(
       accountDeltas({ type: "transfer", accountId: "cash", toAccountId: "dis", amount: 132000 }, -1),
     ).toEqual({ cash: 132000, dis: -132000 });
+  });
+});
+
+describe("pruneZeroDeltas", () => {
+  // Regression guard for the 2026-08-01 rollup wipe: a delta that cancels out
+  // must be reported as "nothing moved", because persisting it as an empty
+  // netFlow map erases every account's balance (see rollupDelta).
+  const cancels = (deltas: Record<string, number>) =>
+    Object.keys(pruneZeroDeltas(deltas)).length === 0;
+
+  it("keeps accounts that actually move", () => {
+    expect(pruneZeroDeltas({ a: -300, b: 300 })).toEqual({ a: -300, b: 300 });
+    expect(pruneZeroDeltas({ a: -300, b: 0 })).toEqual({ a: -300 });
+  });
+
+  it("reports a same-account transfer as no movement", () => {
+    expect(cancels(accountDeltas({ type: "transfer", accountId: "a", toAccountId: "a", amount: 500 }, 1))).toBe(true);
+  });
+
+  it("reports a zero amount as no movement", () => {
+    expect(cancels(accountDeltas({ type: "expense", accountId: "a", toAccountId: null, amount: 0 }, 1))).toBe(true);
+    expect(cancels(accountDeltas({ type: "transfer", accountId: "a", toAccountId: "b", amount: 0 }, 1))).toBe(true);
+  });
+
+  it("reports an edit that leaves amount and accounts alone as no movement", () => {
+    // What update() computes when only the title/category/date changed.
+    const old = { type: "expense" as EventType, accountId: "a", toAccountId: null, amount: 500 };
+    const deltas: Record<string, number> = {};
+    for (const m of [accountDeltas(old, -1), accountDeltas({ ...old }, 1)])
+      for (const [k, v] of Object.entries(m)) deltas[k] = (deltas[k] ?? 0) + v;
+    expect(deltas).toEqual({ a: 0 }); // non-empty, so a key-count guard is not enough
+    expect(cancels(deltas)).toBe(true);
+  });
+
+  it("still reports movement when an edit changes the amount", () => {
+    const old = { type: "expense" as EventType, accountId: "a", toAccountId: null, amount: 500 };
+    const deltas: Record<string, number> = {};
+    for (const m of [accountDeltas(old, -1), accountDeltas({ ...old, amount: 600 }, 1)])
+      for (const [k, v] of Object.entries(m)) deltas[k] = (deltas[k] ?? 0) + v;
+    expect(pruneZeroDeltas(deltas)).toEqual({ a: -100 });
   });
 });
 

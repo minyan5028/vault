@@ -37,6 +37,22 @@ export function accountDeltas(
   return d;
 }
 
+/**
+ * Drop the accounts that don't actually move, leaving only non-zero deltas.
+ *
+ * Callers must treat an empty result as "write nothing to the rollup". A
+ * balance delta can cancel out completely in ordinary use — a same-account
+ * transfer, a zero amount, an edit that touches only the title/category/date,
+ * deleting a holding whose legs net to zero — and persisting that as an empty
+ * `netFlow` map would wipe the whole rollup (see `rollupDelta` in
+ * transactionRepo for why Firestore treats it that way).
+ */
+export function pruneZeroDeltas(deltas: Record<string, number>): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [acc, v] of Object.entries(deltas)) if (v !== 0) out[acc] = v;
+  return out;
+}
+
 /** Signed effect of one transaction on one account's balance. */
 export function effectOn(tx: Transaction, accountId: string): number {
   let e = 0;

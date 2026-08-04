@@ -29,7 +29,7 @@ import {
 import { db } from "../lib/firebase";
 import { yearMonthOf } from "../lib/date";
 import { addContribution, monthContribution, type RollupContribution } from "../lib/rollup";
-import { accountDeltas } from "../lib/balance";
+import { accountDeltas, pruneZeroDeltas } from "../lib/balance";
 import type { EventType, MonthlyRollup, Transaction } from "../domain/types";
 
 export interface NewTransactionInput {
@@ -70,10 +70,25 @@ const monthRollupRef = (ledgerId: string, ym: string) => doc(rollupsCol(ledgerId
 const cmpDesc = (a: Transaction, b: Transaction) =>
   b.date.getTime() - a.date.getTime() || b.createdAt.getTime() - a.createdAt.getTime();
 
-/** A set-merge payload that atomically increments the rollup's netFlow map. */
-function rollupDelta(deltas: Record<string, number>) {
+/**
+ * A set-merge payload that atomically increments the rollup's netFlow map, or
+ * `null` when nothing moves — callers must then skip the write entirely.
+ *
+ * Never emit `{ netFlow: {} }`. Under `{ merge: true }` Firestore builds a field
+ * mask from the payload's leaves, and an EMPTY map is itself a leaf: the mask
+ * becomes `netFlow`, so the server replaces the whole map and every account's
+ * balance is lost. Only a non-empty nested map expands to per-key paths
+ * (`netFlow.dream`) that merge as intended. Deltas cancelling to zero is
+ * routine — a same-account transfer, a zero amount, an edit that changes only
+ * the title/category/date, a holding deletion whose legs net out — so this is
+ * reachable from ordinary use, and it wiped the rollup on 2026-08-01.
+ */
+function rollupDelta(deltas: Record<string, number>): { netFlow: Record<string, unknown> } | null {
+  const moved = pruneZeroDeltas(deltas);
+  const accounts = Object.keys(moved);
+  if (accounts.length === 0) return null;
   const netFlow: Record<string, unknown> = {};
-  for (const [acc, v] of Object.entries(deltas)) if (v !== 0) netFlow[acc] = increment(v);
+  for (const acc of accounts) netFlow[acc] = increment(moved[acc]);
   return { netFlow };
 }
 
@@ -160,7 +175,8 @@ export function writeTransferToBatch(
     updatedAt: serverTimestamp(),
     deletedAt: null,
   });
-  batch.set(rollupRef(ledgerId), rollupDelta(accountDeltas(input, 1)), { merge: true });
+  const p = rollupDelta(accountDeltas(input, 1));
+  if (p) batch.set(rollupRef(ledgerId), p, { merge: true });
 }
 
 /** Soft-delete a transaction within a batch (no rollup change — caller nets the
@@ -172,14 +188,15 @@ export function softDeleteInBatch(batch: WriteBatch, ledgerId: string, txId: str
   });
 }
 
-/** Apply a combined balance delta to the rollup within a batch (one write). */
+/** Apply a combined balance delta to the rollup within a batch (one write).
+ *  A delta that nets to zero writes nothing — see `rollupDelta`. */
 export function commitBalanceDelta(
   batch: WriteBatch,
   ledgerId: string,
   deltas: Record<string, number>,
 ): void {
-  if (Object.keys(deltas).length > 0)
-    batch.set(rollupRef(ledgerId), rollupDelta(deltas), { merge: true });
+  const p = rollupDelta(deltas);
+  if (p) batch.set(rollupRef(ledgerId), p, { merge: true });
 }
 
 export const transactionRepo = {
@@ -196,7 +213,8 @@ export const transactionRepo = {
       updatedAt: serverTimestamp(),
       deletedAt: null,
     });
-    batch.set(rollupRef(ledgerId), rollupDelta(accountDeltas(input, 1)), { merge: true });
+    const p = rollupDelta(accountDeltas(input, 1));
+    if (p) batch.set(rollupRef(ledgerId), p, { merge: true });
     const mc = monthContribution(input, 1);
     if (mc) {
       const ym = yearMonthOf(input.date);
@@ -225,7 +243,8 @@ export const transactionRepo = {
         updatedAt: serverTimestamp(),
         deletedAt: null,
       });
-      tx.set(rollupRef(ledgerId), rollupDelta(accountDeltas(input, 1)), { merge: true });
+      const p = rollupDelta(accountDeltas(input, 1));
+      if (p) tx.set(rollupRef(ledgerId), p, { merge: true });
       const mc = monthContribution(input, 1);
       if (mc) {
         const ym = yearMonthOf(input.date);
@@ -354,7 +373,8 @@ export const transactionRepo = {
       };
       if (notDeleted) merge(accountDeltas(old as never, -1));
       merge(accountDeltas(merged, 1));
-      tx.set(rollupRef(ledgerId), rollupDelta(deltas), { merge: true });
+      const p = rollupDelta(deltas);
+      if (p) tx.set(rollupRef(ledgerId), p, { merge: true });
 
       // Month rollups: reverse the old month, apply the new — different docs
       // when the date crosses a month boundary.
@@ -376,7 +396,8 @@ export const transactionRepo = {
       if (!snap.exists() || (snap.data().deletedAt ?? null) !== null) return;
       const data = snap.data();
       tx.update(ref, { deletedAt: serverTimestamp(), updatedAt: serverTimestamp() });
-      tx.set(rollupRef(ledgerId), rollupDelta(accountDeltas(data as never, -1)), { merge: true });
+      const p = rollupDelta(accountDeltas(data as never, -1));
+      if (p) tx.set(rollupRef(ledgerId), p, { merge: true });
       const mc = monthContribution(data as never, -1);
       if (mc) tx.set(monthRollupRef(ledgerId, data.yearMonth), monthRollupDelta(data.yearMonth, mc), {
         merge: true,
@@ -392,7 +413,8 @@ export const transactionRepo = {
       if (!snap.exists() || (snap.data().deletedAt ?? null) === null) return;
       const data = snap.data();
       tx.update(ref, { deletedAt: null, updatedAt: serverTimestamp() });
-      tx.set(rollupRef(ledgerId), rollupDelta(accountDeltas(data as never, 1)), { merge: true });
+      const p = rollupDelta(accountDeltas(data as never, 1));
+      if (p) tx.set(rollupRef(ledgerId), p, { merge: true });
       const mc = monthContribution(data as never, 1);
       if (mc) tx.set(monthRollupRef(ledgerId, data.yearMonth), monthRollupDelta(data.yearMonth, mc), {
         merge: true,

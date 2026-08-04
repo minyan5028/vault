@@ -41,9 +41,12 @@ export async function seedLedgerCatalog(ledgerId: string): Promise<void> {
       sortOrder: i,
     }),
   );
-  // Empty balance rollup, maintained incrementally by transactionRepo. Merge so
-  // that if this ever runs against an existing ledger by mistake, it can't wipe
-  // an established netFlow (merging {} leaves existing keys intact).
-  batch.set(doc(db, "ledgers", ledgerId, "meta", "balances"), { netFlow: {} }, { merge: true });
+  // Deliberately NOT pre-creating meta/balances. Writing `{ netFlow: {} }` here
+  // would be actively dangerous: under `{ merge: true }` an empty map is a leaf
+  // in the field mask, so it REPLACES netFlow rather than leaving it alone (the
+  // old comment here claimed the opposite). Should this ever run against an
+  // established ledger, that one line would erase every balance. The doc is
+  // created by the first transaction's merge, and subscribeBalances already
+  // treats "missing" as {}.
   await batch.commit();
 }
