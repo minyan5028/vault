@@ -4,14 +4,21 @@
  * mis-detected the existing ledger as new). Each account moves in its own
  * currency: source by amount, a transfer's destination by toAmount.
  *
- * Usage: node scripts/recompute_balances.mjs [--commit]
+ * Usage: node scripts/recompute_balances.mjs <ledgerId> [--commit]
+ *
+ * Run scripts/audit_projections.mjs first — it is read-only and tells you
+ * whether a rebuild is needed at all, and for which ledger.
  */
 import { readFileSync } from "node:fs";
 import { initializeApp, cert } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 
 const commit = process.argv.includes("--commit");
-const LEDGER = "SSNCV1RyNeVrzT8kdTrm7ll6fYd2";
+const LEDGER = process.argv.slice(2).find((a) => !a.startsWith("--"));
+if (!LEDGER) {
+  console.error("Usage: node scripts/recompute_balances.mjs <ledgerId> [--commit]");
+  process.exit(1);
+}
 const sa = JSON.parse(readFileSync("serviceAccountKey.json", "utf8"));
 initializeApp({ credential: cert(sa) });
 const db = getFirestore();
