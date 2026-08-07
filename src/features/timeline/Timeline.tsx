@@ -10,6 +10,7 @@ import { EntryRow } from "../../components/EntryRow";
 import { LedgerSwitcher } from "../../components/LedgerSwitcher";
 import { AppLogo } from "../../components/AppLogo";
 import { Pill } from "../../components/Pill";
+import type { LedgerEndpoint } from "../../lib/endpoints";
 import type { Account, Category, EventType, Ledger, Transaction } from "../../domain/types";
 
 const FILTERS: ("all" | EventType)[] = ["all", "expense", "income", "transfer"];
@@ -23,6 +24,7 @@ export function Timeline({
   ledgerId,
   currentUid,
   accounts,
+  endpoints,
   categories,
   ledgers,
   invites,
@@ -36,6 +38,7 @@ export function Timeline({
   ledgerId: string;
   currentUid: string;
   accounts: Account[];
+  endpoints: ReadonlyMap<string, LedgerEndpoint>;
   categories: Category[];
   ledgers: Ledger[];
   invites: Ledger[];
@@ -211,7 +214,7 @@ export function Timeline({
                       key={e.id}
                       tx={e}
                       locale={locale}
-                      accounts={accounts}
+                      endpoints={endpoints}
                       categories={categories}
                       onEdit={onEdit}
                       onDelete={onDelete}

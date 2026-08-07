@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toDateInputValue } from "../../../lib/date";
 import type { Holding, SnapshotEntry } from "../../../domain/types";
-import { BASE_CURRENCY, inputClass, toMinor, toShares, fromMinor, fromShares } from "./shared";
+import { amountInput, parseAmount, parseShares, sharesInput } from "../../../lib/money";
+import { BASE_CURRENCY, inputClass } from "./shared";
 import { Field } from "./fields";
 
 /**
@@ -29,10 +30,10 @@ export function UpdatePricesForm({
   const { t } = useTranslation();
   const [date, setDate] = useState(() => toDateInputValue(new Date()));
   const [prices, setPrices] = useState<Record<string, string>>(() =>
-    Object.fromEntries(holdings.map((h) => [h.id, fromMinor(h.price)])),
+    Object.fromEntries(holdings.map((h) => [h.id, amountInput(h.price)])),
   );
   const [shares, setShares] = useState<Record<string, string>>(() =>
-    Object.fromEntries(holdings.map((h) => [h.id, fromShares(h.shares)])),
+    Object.fromEntries(holdings.map((h) => [h.id, sharesInput(h.shares)])),
   );
   const currencies = [...new Set(holdings.map((h) => h.currency))];
   const [rates, setRates] = useState<Record<string, string>>(() =>
@@ -44,7 +45,7 @@ export function UpdatePricesForm({
     const group = holdings.filter((h) => h.currency === cur);
     const entries: Record<string, SnapshotEntry> = {};
     for (const h of group)
-      entries[h.id] = { price: toMinor(prices[h.id]), shares: toShares(shares[h.id]) };
+      entries[h.id] = { price: parseAmount(prices[h.id]) ?? 0, shares: parseShares(shares[h.id]) ?? 0 };
     const fxOut: Record<string, number> = {};
     if (cur !== BASE_CURRENCY) fxOut[cur] = parseFloat(rates[cur] || "0") || 0;
     await onSave({ date, entries, fx: fxOut });

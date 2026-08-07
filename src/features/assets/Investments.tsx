@@ -1,12 +1,12 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { formatMoney } from "../../lib/money";
+import { formatMoney, formatShares } from "../../lib/money";
 import { valueHolding, portfolioTotals, toBase, rateToBase } from "../../lib/holdings";
 import { holdingRepo } from "../../data/holdingRepo";
 import { useHoldings } from "../../data/useHoldings";
 import { useSnapshots } from "../../data/useSnapshots";
 import type { Account } from "../../domain/types";
-import { BASE_CURRENCY, CLASSES, displayShares, atTarget } from "./investments/shared";
+import { BASE_CURRENCY, CLASSES, atTarget } from "./investments/shared";
 import { Gain } from "./investments/fields";
 import { ValueTrend } from "./investments/ValueTrend";
 import { AddHoldingForm } from "./investments/AddHoldingForm";
@@ -176,7 +176,7 @@ export function Investments({
                               )}
                             </p>
                             <p className="text-xs text-slate-500">
-                              {displayShares(h.shares)} × {formatMoney(h.price, h.currency, locale)}
+                              {formatShares(h.shares)} × {formatMoney(h.price, h.currency, locale)}
                             </p>
                           </div>
                           <div className="text-right">

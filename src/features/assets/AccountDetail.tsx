@@ -7,6 +7,7 @@ import { balanceAsOfMonth, depositsWithdrawals, runningBalances } from "../../li
 import { MonthSelector } from "../../components/MonthSelector";
 import { StatCell } from "../../components/StatCell";
 import { EntryRow } from "../../components/EntryRow";
+import type { LedgerEndpoint } from "../../lib/endpoints";
 import type { Account, Category, Transaction } from "../../domain/types";
 
 /** One account's transactions — scoped to that account (no full-ledger scan),
@@ -15,7 +16,7 @@ import type { Account, Category, Transaction } from "../../domain/types";
 export function AccountDetail({
   ledgerId,
   account,
-  accounts,
+  endpoints,
   categories,
   onEdit,
   onAddOnDate,
@@ -24,7 +25,7 @@ export function AccountDetail({
 }: {
   ledgerId: string;
   account: Account;
-  accounts: Account[];
+  endpoints: ReadonlyMap<string, LedgerEndpoint>;
   categories: Category[];
   onEdit: (tx: Transaction) => void;
   /** Tap a day heading to record another event on that day, in this account. */
@@ -110,7 +111,7 @@ export function AccountDetail({
                       key={e.id}
                       tx={e}
                       locale={locale}
-                      accounts={accounts}
+                      endpoints={endpoints}
                       categories={categories}
                       onEdit={onEdit}
                       onDelete={onDelete}

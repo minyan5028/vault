@@ -117,7 +117,14 @@ export interface Transaction {
   date: Date;
   yearMonth: string;
   categoryId: string | null;
+  /**
+   * The Ledger Endpoint the money moves from — usually an Account, but a
+   * trade's cash leg names the Holding itself (see `tradeTransfer`), so the
+   * position's value never double-counts against the cash accounts. Resolve it
+   * through `lib/endpoints` rather than searching the account list.
+   */
   accountId: string;
+  /** The Ledger Endpoint the money moves to, for a transfer. See `accountId`. */
   toAccountId: string | null;
   title: string;
   note: string | null;

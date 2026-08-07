@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { formatMoney } from "../lib/money";
+import { endpointName, type LedgerEndpoint } from "../lib/endpoints";
 import type { Account, Category, Transaction } from "../domain/types";
 
 const SWIPE_DELETE_THRESHOLD = 80;
@@ -10,7 +11,7 @@ const SWIPE_DELETE_THRESHOLD = 80;
 export function EntryRow({
   tx,
   locale,
-  accounts,
+  endpoints,
   categories,
   onEdit,
   onDelete,
@@ -20,7 +21,10 @@ export function EntryRow({
 }: {
   tx: Transaction;
   locale: string;
-  accounts: Account[];
+  /** Every id a Financial Event can name — Accounts and Holdings alike. A
+   *  trade's cash leg points at a Holding, so an account-only lookup would
+   *  render it nameless. */
+  endpoints: ReadonlyMap<string, LedgerEndpoint>;
   categories: Category[];
   onEdit: (tx: Transaction) => void;
   onDelete: (tx: Transaction) => void;
@@ -34,12 +38,10 @@ export function EntryRow({
 }) {
   const { t } = useTranslation();
   const category = categories.find((c) => c.id === tx.categoryId);
-  const account = accounts.find((a) => a.id === tx.accountId);
-  const toAccount = accounts.find((a) => a.id === tx.toAccountId);
+  const from = endpointName(tx.accountId, endpoints);
+  const to = endpointName(tx.toAccountId, endpoints);
   const label =
-    tx.title ||
-    (tx.type === "transfer" ? `${account?.name} → ${toAccount?.name}` : category?.name) ||
-    "";
+    tx.title || (tx.type === "transfer" ? `${from} → ${to}` : category?.name) || "";
   // On an account detail, this row's figure is that account's own movement: the
   // credited toAmount (in its currency) when it's the transfer destination,
   // otherwise amount. On the Timeline it's the source amount/currency.
@@ -101,7 +103,7 @@ export function EntryRow({
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm text-slate-200">{label}</p>
           <p className="truncate text-xs text-slate-500">
-            {account?.name}
+            {from}
             {authorName && <span className="text-slate-600"> · {authorName}</span>}
           </p>
         </div>

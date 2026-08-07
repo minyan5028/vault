@@ -4,7 +4,8 @@ import { yearMonthOf, shiftMonth, monthLabel } from "../../lib/date";
 import { useRollups } from "../../data/useRollups";
 import { useTransactionsForMonths } from "../../data/useTransactionsForMonths";
 import { sumRollups } from "../../lib/rollup";
-import { UNCATEGORIZED, type Account, type Category, type Transaction } from "../../domain/types";
+import type { LedgerEndpoint } from "../../lib/endpoints";
+import { UNCATEGORIZED, type Category, type Transaction } from "../../domain/types";
 import { Pill } from "../../components/Pill";
 import { StatCell } from "../../components/StatCell";
 import { TrendChart, type TrendPoint } from "./TrendChart";
@@ -27,13 +28,13 @@ type Mode = "expense" | "income";
  */
 export function Stats({
   ledgerId,
-  accounts,
+  endpoints,
   categories,
   onEdit,
   onDelete,
 }: {
   ledgerId: string;
-  accounts: Account[];
+  endpoints: ReadonlyMap<string, LedgerEndpoint>;
   categories: Category[];
   onEdit: (tx: Transaction) => void;
   onDelete: (tx: Transaction) => void;
@@ -156,7 +157,7 @@ export function Stats({
           <DrillView
             label={drill.label}
             txns={drillTx}
-            accounts={accounts}
+            endpoints={endpoints}
             categories={categories}
             locale={locale}
             onBack={() => setDrill(null)}

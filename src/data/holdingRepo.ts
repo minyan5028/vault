@@ -4,110 +4,61 @@
  * snapshot records every holding's price + share count on one date (like a
  * spreadsheet column) and denormalizes the latest price/shares back onto each
  * holding for quick display. Current FX rates live in one small `meta/fx` doc.
+ *
+ * As in `transactionRepo`, reads are Firestore queries and writes go through
+ * the plan/execute seam: `writes.ts` decides, `firestoreExec` commits.
  */
 import {
   Timestamp,
-  collection,
-  doc,
   getDoc,
   getDocs,
-  increment,
   onSnapshot,
   query,
   serverTimestamp,
   setDoc,
   updateDoc,
   where,
-  writeBatch,
   type DocumentData,
   type QueryDocumentSnapshot,
   type Unsubscribe,
 } from "firebase/firestore";
-import { db } from "../lib/firebase";
 import { fromDateInputValue } from "../lib/date";
-import { applySell } from "../lib/holdings";
+import type { Holding, PortfolioSnapshot, SnapshotEntry, Trade } from "../domain/types";
+import { collectionRef, commitPlan, docRef, newDocId } from "./firestoreExec";
 import {
-  writeTransferToBatch,
-  softDeleteInBatch,
-  commitBalanceDelta,
-  type NewTransactionInput,
-} from "./transactionRepo";
-import { accountDeltas } from "../lib/balance";
-import type { Holding, PortfolioSnapshot, SnapshotEntry, Trade, TradeKind } from "../domain/types";
+  fxPath,
+  holdingPath,
+  holdingsPath,
+  snapshotsPath,
+  tradesPath,
+  transactionsPath,
+} from "./writePlan";
+import {
+  planAddHolding,
+  planBuy,
+  planRemoveHolding,
+  planSell,
+  planSnapshot,
+  type HoldingCashLeg,
+  type NewHolding,
+  type TradeIds,
+  type TradeInput,
+} from "./writes";
+import { asStored } from "./transactionRepo";
 
-const holdingsCol = (ledgerId: string) => collection(db, "ledgers", ledgerId, "holdings");
+export type { NewHolding, TradeInput } from "./writes";
+
+const holdingsCol = (ledgerId: string) => collectionRef(holdingsPath(ledgerId));
 const tradesCol = (ledgerId: string, holdingId: string) =>
-  collection(doc(holdingsCol(ledgerId), holdingId), "trades");
-const snapshotsCol = (ledgerId: string) => collection(db, "ledgers", ledgerId, "snapshots");
-const fxRef = (ledgerId: string) => doc(db, "ledgers", ledgerId, "meta", "fx");
+  collectionRef(tradesPath(ledgerId, holdingId));
+const snapshotsCol = (ledgerId: string) => collectionRef(snapshotsPath(ledgerId));
+const fxRef = (ledgerId: string) => docRef(fxPath(ledgerId));
 
-export interface NewHolding {
-  ticker: string;
-  name: string | null;
-  class: Holding["class"];
-  currency: string;
-  cost: number;
-  shares: number;
-  price: number;
-  targetPrice: number | null;
-  dividendPerShare: number;
-  buyDate: Date | null;
-  /** Cash account the opening buy is paid from; null keeps the holding
-   *  standalone (no cash leg). */
-  fundingAccountId: string | null;
-}
-
-/** A buy (加碼) or sell (賣出) against an existing holding. */
-export interface TradeInput {
-  /** Shares transacted (×10000). */
-  shares: number;
-  /** Per-share price (×100). */
-  price: number;
-  /** Cash moved (×100): a buy's cost paid, a sell's proceeds received. */
-  amount: number;
-  date: Date;
-  /** Cash account the money comes from (buy) / lands in (sell); null = no cash
-   *  leg. Must match the holding's currency. */
-  cashAccountId: string | null;
-}
-
-/** The transfer that moves cash for a trade: buy debits the cash account into
- *  the holding; sell moves the proceeds from the holding back to cash. The
- *  holding's id stands in as a (non-listed) transfer endpoint, so its balance
- *  never double-counts against the cash accounts on the Assets page. */
-function tradeTransfer(
-  kind: TradeKind,
-  holding: Pick<Holding, "id" | "ticker" | "currency">,
-  input: TradeInput,
-  uid: string,
-): NewTransactionInput {
-  const cashAccountId = input.cashAccountId as string;
+/** Ids for a trade and its optional cash leg, allocated before planning. */
+function tradeIds(ledgerId: string, holdingId: string, withCashLeg: boolean): TradeIds {
   return {
-    type: "transfer",
-    amount: input.amount,
-    currency: holding.currency,
-    baseAmount: input.amount,
-    baseCurrency: holding.currency,
-    fxRate: 1,
-    date: input.date,
-    categoryId: null,
-    accountId: kind === "buy" ? cashAccountId : holding.id,
-    toAccountId: kind === "buy" ? holding.id : cashAccountId,
-    title: holding.ticker,
-    note: null,
-    createdBy: uid,
-  };
-}
-
-function tradeDoc(kind: TradeKind, input: TradeInput, realized: number) {
-  return {
-    kind,
-    date: Timestamp.fromDate(input.date),
-    shares: input.shares,
-    price: input.price,
-    amount: input.amount,
-    realized,
-    createdAt: serverTimestamp(),
+    tradeId: newDocId(tradesPath(ledgerId, holdingId)),
+    transferId: withCashLeg ? newDocId(transactionsPath(ledgerId)) : undefined,
   };
 }
 
@@ -177,7 +128,9 @@ export const holdingRepo = {
   },
 
   /** Read current rates + when they were last set (millis, or null if never). */
-  async getFxMeta(ledgerId: string): Promise<{ rates: Record<string, number>; updatedAt: number | null }> {
+  async getFxMeta(
+    ledgerId: string,
+  ): Promise<{ rates: Record<string, number>; updatedAt: number | null }> {
     const snap = await getDoc(fxRef(ledgerId));
     const d = snap.data();
     return {
@@ -210,69 +163,24 @@ export const holdingRepo = {
    * debits that cash account (atomically).
    */
   async add(ledgerId: string, input: NewHolding, uid: string): Promise<string> {
-    const { buyDate, fundingAccountId, ...rest } = input;
-    const date = buyDate ?? new Date();
-    const ref = doc(holdingsCol(ledgerId));
-    const batch = writeBatch(db);
-    batch.set(ref, {
-      ...rest,
-      realizedGain: 0,
-      dividendReceived: 0,
-      buyDate: buyDate ? Timestamp.fromDate(buyDate) : null,
-      pricedAt: serverTimestamp(),
-      archived: false,
-      sortOrder: Date.now(),
-    });
-    const openingBuy: TradeInput = {
-      shares: rest.shares,
-      price: rest.price,
-      amount: rest.cost,
-      date,
-      cashAccountId: fundingAccountId,
-    };
-    batch.set(doc(tradesCol(ledgerId, ref.id)), tradeDoc("buy", openingBuy, 0));
-    if (fundingAccountId) {
-      const h = { id: ref.id, ticker: rest.ticker, currency: rest.currency };
-      writeTransferToBatch(batch, ledgerId, tradeTransfer("buy", h, openingBuy, uid));
-    }
-    await batch.commit();
-    return ref.id;
+    const holdingId = newDocId(holdingsPath(ledgerId));
+    const ids = tradeIds(ledgerId, holdingId, input.fundingAccountId !== null);
+    await commitPlan(planAddHolding(ledgerId, holdingId, input, uid, ids));
+    return holdingId;
   },
 
   /** Buy more of a holding (average-cost): shares in, cash paid folded into the
    *  cost basis, with an optional cash leg. */
   async buy(ledgerId: string, holding: Holding, input: TradeInput, uid: string): Promise<void> {
-    const batch = writeBatch(db);
-    batch.update(doc(holdingsCol(ledgerId), holding.id), {
-      shares: increment(input.shares),
-      cost: increment(input.amount),
-      price: input.price,
-      pricedAt: Timestamp.fromDate(input.date),
-    });
-    batch.set(doc(tradesCol(ledgerId, holding.id)), tradeDoc("buy", input, 0));
-    if (input.cashAccountId) {
-      writeTransferToBatch(batch, ledgerId, tradeTransfer("buy", holding, input, uid));
-    }
-    await batch.commit();
+    const ids = tradeIds(ledgerId, holding.id, input.cashAccountId !== null);
+    await commitPlan(planBuy(ledgerId, holding, input, uid, ids));
   },
 
   /** Sell part or all of a holding (average-cost): removes shares at the average
    *  cost, banks the realized gain, and moves proceeds to cash (optional leg). */
   async sell(ledgerId: string, holding: Holding, input: TradeInput, uid: string): Promise<void> {
-    const r = applySell({ shares: holding.shares, cost: holding.cost }, input.shares, input.amount);
-    const batch = writeBatch(db);
-    batch.update(doc(holdingsCol(ledgerId), holding.id), {
-      shares: increment(-input.shares),
-      cost: increment(-r.costRemoved),
-      realizedGain: increment(r.realized),
-      price: input.price,
-      pricedAt: Timestamp.fromDate(input.date),
-    });
-    batch.set(doc(tradesCol(ledgerId, holding.id)), tradeDoc("sell", input, r.realized));
-    if (input.cashAccountId) {
-      writeTransferToBatch(batch, ledgerId, tradeTransfer("sell", holding, input, uid));
-    }
-    await batch.commit();
+    const ids = tradeIds(ledgerId, holding.id, input.cashAccountId !== null);
+    await commitPlan(planSell(ledgerId, holding, input, uid, ids));
   },
 
   /** Live trade log for one holding, newest first. */
@@ -289,44 +197,38 @@ export const holdingRepo = {
     id: string,
     patch: Partial<NewHolding & { archived: boolean; dividendReceived: number }>,
   ) {
-    return updateDoc(doc(holdingsCol(ledgerId), id), patch);
+    return updateDoc(docRef(holdingPath(ledgerId, id)), patch);
   },
 
   /**
    * Delete a holding entirely: soft-delete every paired cash transfer (undoing
    * their effect on the funding accounts), then hard-delete the holding doc and
-   * its trades. The balance rollup is reversed once, netted across all legs.
+   * its trades. The projections are reversed once, netted across all legs.
    * Use for a mis-entered holding; prefer archiving to keep history.
    */
   async remove(ledgerId: string, holding: Holding): Promise<void> {
-    const txCol = collection(db, "ledgers", ledgerId, "transactions");
-    const [asDest, asSrc] = await Promise.all([
+    const txCol = collectionRef(transactionsPath(ledgerId));
+    const [asDest, asSrc, trades] = await Promise.all([
       getDocs(query(txCol, where("toAccountId", "==", holding.id))),
       getDocs(query(txCol, where("accountId", "==", holding.id))),
+      getDocs(tradesCol(ledgerId, holding.id)),
     ]);
-    const batch = writeBatch(db);
-    const combined: Record<string, number> = {};
+    // Both queries return the same doc for a leg whose two endpoints are this
+    // holding, so dedupe by id — reversing one leg twice would corrupt the
+    // rollup by exactly its own amount.
+    const legs = new Map<string, HoldingCashLeg>();
     for (const snap of [...asDest.docs, ...asSrc.docs]) {
-      const d = snap.data();
-      if (d.deletedAt) continue;
-      softDeleteInBatch(batch, ledgerId, snap.id);
-      const delta = accountDeltas(
-        {
-          type: d.type,
-          accountId: d.accountId,
-          toAccountId: d.toAccountId ?? null,
-          amount: d.amount,
-          toAmount: d.toAmount,
-        },
-        -1,
-      );
-      for (const [acc, v] of Object.entries(delta)) combined[acc] = (combined[acc] ?? 0) + v;
+      if (snap.data().deletedAt) continue;
+      legs.set(snap.id, { txId: snap.id, event: asStored(snap.data()) });
     }
-    commitBalanceDelta(batch, ledgerId, combined);
-    const trades = await getDocs(tradesCol(ledgerId, holding.id));
-    for (const t of trades.docs) batch.delete(t.ref);
-    batch.delete(doc(holdingsCol(ledgerId), holding.id));
-    await batch.commit();
+    await commitPlan(
+      planRemoveHolding(
+        ledgerId,
+        holding.id,
+        [...legs.values()],
+        trades.docs.map((t) => t.id),
+      ),
+    );
   },
 
   /**
@@ -334,25 +236,11 @@ export const holdingRepo = {
    * `entries` (a partial update — e.g. just the USD holdings), refreshes their
    * denormalized price/shares/pricedAt, and updates current FX — all
    * atomically. Untouched holdings keep their previous pricedAt.
-   *
-   * The snapshot doc is merged, so updating a second currency group on the same
-   * date accumulates into one `snapshots/{date}` doc rather than overwriting it.
    */
   async addSnapshot(
     ledgerId: string,
     snap: { date: string; entries: Record<string, SnapshotEntry>; fx: Record<string, number> },
   ): Promise<void> {
-    const batch = writeBatch(db);
-    batch.set(doc(snapshotsCol(ledgerId), snap.date), snap, { merge: true });
-    const pricedAt = Timestamp.fromDate(fromDateInputValue(snap.date));
-    for (const [holdingId, e] of Object.entries(snap.entries)) {
-      batch.update(doc(holdingsCol(ledgerId), holdingId), {
-        price: e.price,
-        shares: e.shares,
-        pricedAt,
-      });
-    }
-    batch.set(fxRef(ledgerId), { rates: snap.fx }, { merge: true });
-    await batch.commit();
+    await commitPlan(planSnapshot(ledgerId, snap, fromDateInputValue(snap.date)));
   },
 };

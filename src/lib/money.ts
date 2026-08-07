@@ -9,6 +9,14 @@
 /** Fixed scale for every currency: stored = displayed × 100. */
 export const MINOR_SCALE = 100;
 
+/**
+ * Fixed scale for share counts: stored = displayed × 10000 (4 decimals).
+ * A separate scale because DRIP produces fractional shares that two decimals
+ * would round away. It lives here, with the money scale, so there is one module
+ * that knows every scaling rule the domain has (ADR-0001).
+ */
+export const SHARES_SCALE = 10_000;
+
 /** Currency codes offered in pickers (accounts, holdings) — a dropdown so only
  *  valid ISO 4217 codes are stored. Base currency (TWD) first. */
 export const CURRENCIES = ["TWD", "USD", "JPY", "HKD", "EUR", "GBP", "CNY"];
@@ -46,6 +54,49 @@ export function toMinor(major: number | string): number {
 export function toMajor(minor: number): number {
   assertMinor(minor);
   return minor / MINOR_SCALE;
+}
+
+/**
+ * Parse a form field into a stored integer at `scale`, tolerantly.
+ *
+ * Blank or unparseable input is `null` — a half-typed field is normal while the
+ * user is still typing, and throwing would take the form down. The rounding
+ * matches `toMinor` exactly, so a value entered in a Holding form scales the
+ * same way as one entered in Quick Entry (1.005 → 101, not 100).
+ */
+function parseScaled(text: string, scale: number): number | null {
+  const s = text.trim();
+  if (!s) return null;
+  const value = Number(s);
+  if (!Number.isFinite(value)) return null;
+  return Math.round((value + Number.EPSILON * Math.sign(value)) * scale);
+}
+
+/** Parse a money form field into stored minor units, or null if not a number. */
+export function parseAmount(text: string): number | null {
+  return parseScaled(text, MINOR_SCALE);
+}
+
+/** Parse a share-count form field into stored ×10000 units, or null. */
+export function parseShares(text: string): number | null {
+  return parseScaled(text, SHARES_SCALE);
+}
+
+/** A stored money amount as the editable string a form field starts on. Never
+ *  masked — a prefill has to stay editable even when amounts are hidden. */
+export function amountInput(minor: number): string {
+  return String(toMajor(minor));
+}
+
+/** A stored share count as the editable string a form field starts on. */
+export function sharesInput(shares: number): string {
+  return String(shares / SHARES_SCALE);
+}
+
+/** A share count for display, masked when amounts are hidden (privacy toggle).
+ *  Use `sharesInput` for form prefills, which must stay editable. */
+export function formatShares(shares: number): string {
+  return amountsHidden ? MASK : sharesInput(shares);
 }
 
 /** Sum stored minor amounts exactly (integer addition). */

@@ -7,6 +7,12 @@ import {
   shortMoney,
   setAmountsHidden,
   MINOR_SCALE,
+  SHARES_SCALE,
+  parseAmount,
+  parseShares,
+  amountInput,
+  sharesInput,
+  formatShares,
 } from "./money";
 
 describe("toMinor", () => {
@@ -106,5 +112,86 @@ describe("amount hiding (privacy toggle)", () => {
 describe("MINOR_SCALE", () => {
   it("is the single fixed factor", () => {
     expect(MINOR_SCALE).toBe(100);
+  });
+});
+
+describe("parseAmount", () => {
+  it("scales a typed decimal to minor units", () => {
+    expect(parseAmount("149.90")).toBe(14990);
+    expect(parseAmount(" 12 ")).toBe(1200);
+  });
+
+  it("rounds float-drift cases the same way toMinor does", () => {
+    // The investments forms used to Math.round(parseFloat(s) * 100), which gives
+    // 100 here because 1.005 * 100 is 100.49999999999999.
+    expect(parseAmount("1.005")).toBe(101);
+    expect(parseAmount("1.005")).toBe(toMinor("1.005"));
+  });
+
+  it("is null for a blank field rather than 0 — nothing entered is not zero", () => {
+    expect(parseAmount("")).toBeNull();
+    expect(parseAmount("   ")).toBeNull();
+  });
+
+  it("is null for unparseable input rather than throwing or silently zeroing", () => {
+    expect(parseAmount("abc")).toBeNull();
+    expect(parseAmount("1.2.3")).toBeNull();
+  });
+
+  it("keeps a negative value", () => {
+    expect(parseAmount("-4.5")).toBe(-450);
+  });
+});
+
+describe("parseShares", () => {
+  it("scales to four decimal places", () => {
+    expect(parseShares("1.2345")).toBe(12345);
+    expect(parseShares("100")).toBe(1_000_000);
+  });
+
+  it("is null for blank or unparseable input", () => {
+    expect(parseShares("")).toBeNull();
+    expect(parseShares("abc")).toBeNull();
+  });
+});
+
+describe("form input values", () => {
+  it("round-trips a money field through the form and back", () => {
+    expect(parseAmount(amountInput(14990))).toBe(14990);
+  });
+
+  it("round-trips a share field through the form and back", () => {
+    expect(parseShares(sharesInput(12345))).toBe(12345);
+  });
+
+  it("stays editable while amounts are hidden — a prefill is never masked", () => {
+    setAmountsHidden(true);
+    try {
+      expect(amountInput(14990)).toBe("149.9");
+      expect(sharesInput(12345)).toBe("1.2345");
+    } finally {
+      setAmountsHidden(false);
+    }
+  });
+});
+
+describe("formatShares", () => {
+  it("shows the share count", () => {
+    expect(formatShares(12345)).toBe("1.2345");
+  });
+
+  it("masks it while amounts are hidden", () => {
+    setAmountsHidden(true);
+    try {
+      expect(formatShares(12345)).toBe("••••");
+    } finally {
+      setAmountsHidden(false);
+    }
+  });
+});
+
+describe("SHARES_SCALE", () => {
+  it("is four decimal places, so DRIP fractions survive", () => {
+    expect(SHARES_SCALE).toBe(10_000);
   });
 });

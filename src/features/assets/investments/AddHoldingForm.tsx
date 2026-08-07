@@ -4,7 +4,8 @@ import { CURRENCIES } from "../../../lib/money";
 import { fromDateInputValue } from "../../../lib/date";
 import { type NewHolding } from "../../../data/holdingRepo";
 import type { Account, HoldingClass } from "../../../domain/types";
-import { CLASSES, inputClass, toMinor, toShares } from "./shared";
+import { parseAmount, parseShares } from "../../../lib/money";
+import { CLASSES, inputClass } from "./shared";
 import { Field, CashAccountField } from "./fields";
 
 export function AddHoldingForm({
@@ -151,11 +152,11 @@ export function AddHoldingForm({
               name: null,
               class: cls,
               currency: currency.trim() || "TWD",
-              shares: toShares(shares),
-              price: toMinor(price),
-              cost: toMinor(costValue),
-              targetPrice: target ? toMinor(target) : null,
-              dividendPerShare: divPerShare ? toMinor(divPerShare) : 0,
+              shares: parseShares(shares) ?? 0,
+              price: parseAmount(price) ?? 0,
+              cost: parseAmount(costValue) ?? 0,
+              targetPrice: parseAmount(target),
+              dividendPerShare: parseAmount(divPerShare) ?? 0,
               buyDate: buyDate ? fromDateInputValue(buyDate) : null,
               fundingAccountId: fundingAccountId || null,
             })

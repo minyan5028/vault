@@ -7,10 +7,12 @@ import { provisionPersonalLedger } from "./data/provisionLedger";
 import { transactionRepo } from "./data/transactionRepo";
 import { materializeRecurring } from "./data/materializeRecurring";
 import { useLedgerData } from "./data/useLedgerData";
+import { useLedgerHoldings } from "./data/useHoldings";
+import { endpointIndex } from "./lib/endpoints";
+import { isStockReminderDue } from "./lib/stockReminder";
 import { useFxAutoRefresh } from "./data/useFxAutoRefresh";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { useAmountVisibility } from "./lib/useAmountVisibility";
-import { useStockReminder } from "./data/useStockReminder";
 import { AppNavProvider } from "./components/appNav";
 import { useUserLedgers } from "./data/useUserLedgers";
 import { useMyInvites } from "./data/useMyInvites";
@@ -60,9 +62,14 @@ function AuthedApp({ user }: { user: User }) {
   );
   const activeLedger = ledgers.find((l) => l.id === ledgerId);
   const { accounts, categories } = useLedgerData(ready ? ledgerId : "");
+  // One holdings subscription, two derived views: the endpoint index (a trade's
+  // cash leg names a Holding, so rows resolved against accounts alone would
+  // render it nameless) and the quarterly price reminder.
+  const holdings = useLedgerHoldings(ready ? ledgerId : "");
+  const endpoints = useMemo(() => endpointIndex(accounts, holdings), [accounts, holdings]);
   useFxAutoRefresh(ready ? ledgerId : "", accounts);
   const amounts = useAmountVisibility();
-  const stockReminderDue = useStockReminder(ready ? ledgerId : "");
+  const stockReminderDue = isStockReminderDue(holdings, Date.now());
   const myProfile = useMemo(
     () => ({ name: user.displayName ?? "", email: user.email ?? "" }),
     [user.displayName, user.email],
@@ -163,6 +170,7 @@ function AuthedApp({ user }: { user: User }) {
           ledgerId={ledgerId}
           currentUid={user.uid}
           accounts={accounts}
+          endpoints={endpoints}
           categories={categories}
           ledgers={ledgers}
           invites={invites}
@@ -177,7 +185,7 @@ function AuthedApp({ user }: { user: User }) {
       {tab === "stats" && (
         <Stats
           ledgerId={ledgerId}
-          accounts={accounts}
+          endpoints={endpoints}
           categories={categories}
           onEdit={(tx) => setEditor({ tx })}
           onDelete={(tx) => deleteTx(tx.id)}
@@ -222,7 +230,7 @@ function AuthedApp({ user }: { user: User }) {
         <AccountDetail
           ledgerId={ledgerId}
           account={accountView}
-          accounts={accounts}
+          endpoints={endpoints}
           categories={categories}
           onEdit={(tx) => setEditor({ tx })}
           onAddOnDate={(date) => setEditor({ date, accountId: accountView.id })}

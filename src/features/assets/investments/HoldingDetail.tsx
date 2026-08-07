@@ -20,16 +20,12 @@ import type {
   TradeKind,
 } from "../../../domain/types";
 import {
-  BASE_CURRENCY,
-  CLASSES,
-  inputClass,
-  toMinor,
-  toShares,
-  fromMinor,
-  displayShares,
-  atTarget,
-  formatPct,
-} from "./shared";
+  amountInput,
+  formatShares,
+  parseAmount,
+  parseShares,
+} from "../../../lib/money";
+import { BASE_CURRENCY, CLASSES, inputClass, atTarget, formatPct } from "./shared";
 import { Gain, Field, CashAccountField } from "./fields";
 
 /** A labelled figure in the buy-info grid (label above, value below). */
@@ -108,7 +104,7 @@ export function HoldingDetail({
           </div>
           <div className="mt-0.5 flex justify-between text-xs text-slate-500">
             <span>
-              {displayShares(holding.shares)} × {formatMoney(holding.price, holding.currency, locale)}
+              {formatShares(holding.shares)} × {formatMoney(holding.price, holding.currency, locale)}
             </span>
             <span>
               {t("unrealized")} <Gain minor={v.gainBase} locale={locale} pct={v.gainPct} />
@@ -288,13 +284,13 @@ function EditHoldingForm({
   const [ticker, setTicker] = useState(holding.ticker);
   const [cls, setCls] = useState<HoldingClass>(holding.class);
   const [currency, setCurrency] = useState(holding.currency);
-  const [target, setTarget] = useState(holding.targetPrice != null ? fromMinor(holding.targetPrice) : "");
+  const [target, setTarget] = useState(holding.targetPrice != null ? amountInput(holding.targetPrice) : "");
   const [buyDate, setBuyDate] = useState(holding.buyDate ? toDateInputValue(holding.buyDate) : "");
   const [dividend, setDividend] = useState(
-    holding.dividendReceived ? fromMinor(holding.dividendReceived) : "",
+    holding.dividendReceived ? amountInput(holding.dividendReceived) : "",
   );
   const [divPerShare, setDivPerShare] = useState(
-    holding.dividendPerShare ? fromMinor(holding.dividendPerShare) : "",
+    holding.dividendPerShare ? amountInput(holding.dividendPerShare) : "",
   );
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -397,10 +393,10 @@ function EditHoldingForm({
               ticker: ticker.trim(),
               class: cls,
               currency: currency.trim() || "TWD",
-              targetPrice: target ? toMinor(target) : null,
+              targetPrice: parseAmount(target),
               buyDate: buyDate ? fromDateInputValue(buyDate) : null,
-              dividendReceived: dividend ? toMinor(dividend) : 0,
-              dividendPerShare: divPerShare ? toMinor(divPerShare) : 0,
+              dividendReceived: parseAmount(dividend) ?? 0,
+              dividendPerShare: parseAmount(divPerShare) ?? 0,
             });
           }}
           className="font-medium text-emerald-400 disabled:text-slate-600"
@@ -461,13 +457,13 @@ function TradeForm({
 }) {
   const { t } = useTranslation();
   const [shares, setShares] = useState("");
-  const [price, setPrice] = useState(fromMinor(holding.price));
+  const [price, setPrice] = useState(amountInput(holding.price));
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(() => toDateInputValue(new Date()));
   const [cashAccountId, setCashAccountId] = useState("");
 
-  const sharesMinor = toShares(shares);
-  const amountMinor = toMinor(amount);
+  const sharesMinor = parseShares(shares) ?? 0;
+  const amountMinor = parseAmount(amount) ?? 0;
   const isSell = kind === "sell";
   const valid = sharesMinor > 0 && (!isSell || sharesMinor <= holding.shares);
   const preview = isSell
@@ -537,7 +533,7 @@ function TradeForm({
           onClick={() =>
             onSave({
               shares: sharesMinor,
-              price: toMinor(price),
+              price: parseAmount(price) ?? 0,
               amount: amountMinor,
               date: fromDateInputValue(date),
               cashAccountId: cashAccountId || null,
@@ -579,7 +575,7 @@ function TradeLog({
             </span>
             <div className="min-w-0 flex-1">
               <p className="text-slate-300">
-                {displayShares(tr.shares)} × {formatMoney(tr.price, holding.currency, locale)}
+                {formatShares(tr.shares)} × {formatMoney(tr.price, holding.currency, locale)}
               </p>
               <p className="text-xs text-slate-500">{tr.date.toLocaleDateString(locale)}</p>
             </div>
