@@ -55,6 +55,12 @@ export interface TitleSuggestion {
 
 const transactionsCol = (ledgerId: string) => collectionRef(transactionsPath(ledgerId));
 
+// Upper bound for a Firestore prefix query: U+F8FF sorts above any ordinary
+// character, so [p, p + PREFIX_END] matches every value starting with `p`.
+// Built from its code point on purpose — written literally it is an invisible
+// character that a diff cannot show, and it was silently dropped once already.
+const PREFIX_END = String.fromCodePoint(0xf8ff);
+
 const cmpDesc = (a: Transaction, b: Transaction) =>
   b.date.getTime() - a.date.getTime() || b.createdAt.getTime() - a.createdAt.getTime();
 
@@ -273,7 +279,7 @@ export const transactionRepo = {
     const q = query(
       transactionsCol(ledgerId),
       where("title", ">=", p),
-      where("title", "<=", p + ""),
+      where("title", "<=", p + PREFIX_END),
       orderBy("title"),
       limit(30),
     );
