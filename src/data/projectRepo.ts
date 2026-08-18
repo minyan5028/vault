@@ -93,7 +93,10 @@ export const projectRepo = {
       // when it closed would keep the flag set forever. The authoritative
       // guarantee is still the derived one — an ended Project stamps nothing
       // whatever the flag says — this only keeps the stored value honest.
-      if (projectState({ endDate: patch.endDate }, new Date()) === "ended") {
+      // `startDate` only has to be before the end for the "ended" test; the
+      // caller's own start date is passed when it is being changed too.
+      const startDate = patch.startDate ?? patch.endDate;
+      if (projectState({ startDate, endDate: patch.endDate }, new Date()) === "ended") {
         data.autoAssign = false;
       }
     }

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { formatMoney, toMinor, toMajor } from "../../lib/money";
 import { toDateInputValue, fromDateInputValue } from "../../lib/date";
-import { selectableProjects } from "../../lib/project";
+import { selectableProjects, stampingProject } from "../../lib/project";
 import type { Account, Category, EventType, Project, Transaction } from "../../domain/types";
 import { transactionRepo, type EntryDraft, type TitleSuggestion } from "../../data/transactionRepo";
 import { holdingRepo } from "../../data/holdingRepo";
@@ -87,9 +87,14 @@ export function QuickEntry({
       ? initial.categoryId
       : (categories.find((c) => c.type === "expense" && !c.archived)?.id ?? null),
   );
-  // Editing keeps whatever the event already carries; a new entry starts with
-  // none. Auto-assignment (ADR-0009) prefills this instead, in a later slice.
-  const [projectId, setProjectId] = useState<string | null>(initial?.projectId ?? null);
+  // Editing keeps whatever the event already carries. A new entry is stamped by
+  // whichever Project is auto-assigning — but `projects` arrives from a
+  // subscription, so it is usually empty on the first render and a useState
+  // initializer would miss the stamp entirely. Derive it instead, and stop
+  // deriving the moment the owner touches the field, so clearing one entry
+  // sticks (and does not get re-stamped on the next re-render).
+  const [chosenProject, setChosenProject] = useState<string | null>(initial?.projectId ?? null);
+  const [projectTouched, setProjectTouched] = useState(false);
   const [title, setTitle] = useState(initial?.title ?? "");
   const [date, setDate] = useState<Date>(() => initial?.date ?? initialDate ?? new Date());
   const [showNote, setShowNote] = useState(!!initial?.note);
@@ -121,6 +126,19 @@ export function QuickEntry({
     }, 200);
     return () => clearTimeout(h);
   }, [title, titleFocused, ledgerId]);
+
+  // Stamped by the entry's own date, the same date the picker follows — not by
+  // wall-clock now. Tapping a day heading from before a running trip must not
+  // file that day's grocery run under the trip.
+  const stamped = useMemo(
+    () => (initial ? null : (stampingProject(projects, date)?.id ?? null)),
+    [projects, initial, date],
+  );
+  const projectId = initial || projectTouched ? chosenProject : stamped;
+  const pickProject = (id: string | null) => {
+    setProjectTouched(true);
+    setChosenProject(id);
+  };
 
   // Which Projects are worth offering for *this* entry — see
   // `selectableProjects`. Follows the date field, so pushing an entry back into
@@ -406,13 +424,13 @@ export function QuickEntry({
 
         {/* Project — the second classification axis (ADR-0009). Absent entirely
             when the Ledger has none, so the everyday path is untouched. */}
-        {offered.length > 0 && (
+        {(offered.length > 0 || projectId !== null) && (
           <section className="mt-4">
             <p className="mb-2 text-xs uppercase tracking-wide text-slate-500">{t("projects")}</p>
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => setProjectId(null)}
+                onClick={() => pickProject(null)}
                 className={
                   "rounded-full px-3 py-1 text-sm " +
                   (projectId === null
@@ -426,7 +444,7 @@ export function QuickEntry({
                 <button
                   key={p.id}
                   type="button"
-                  onClick={() => setProjectId(p.id)}
+                  onClick={() => pickProject(p.id)}
                   className={
                     "rounded-full px-3 py-1 text-sm " +
                     (projectId === p.id

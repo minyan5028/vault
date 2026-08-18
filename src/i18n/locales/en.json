@@ -67,6 +67,7 @@
   "endDateRequired": "An end date is required.",
   "endDateBeforeStart": "The end date cannot be before the start date.",
   "projectActive": "In progress",
+  "projectUpcoming": "Not started",
   "projectEnded": "Ended",
   "autoAssign": "Auto-assign new entries",
   "autoAssignHint": "Only one project can auto-assign at a time. Ended projects never do.",

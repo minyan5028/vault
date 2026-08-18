@@ -67,6 +67,7 @@
   "endDateRequired": "必須設定結束日期。",
   "endDateBeforeStart": "結束日期不能早於開始日期。",
   "projectActive": "進行中",
+  "projectUpcoming": "尚未開始",
   "projectEnded": "已結束",
   "autoAssign": "新記帳自動歸入",
   "autoAssignHint": "同時只能有一個專案自動歸入；已結束的專案不會。",

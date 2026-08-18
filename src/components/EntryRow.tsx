@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { formatMoney } from "../lib/money";
 import { endpointName, type LedgerEndpoint } from "../lib/endpoints";
-import type { Account, Category, Transaction } from "../domain/types";
+import type { Account, Category, Project, Transaction } from "../domain/types";
 
 const SWIPE_DELETE_THRESHOLD = 80;
 
@@ -13,6 +13,7 @@ export function EntryRow({
   locale,
   endpoints,
   categories,
+  projects,
   onEdit,
   onDelete,
   runningBalance,
@@ -26,6 +27,8 @@ export function EntryRow({
    *  render it nameless. */
   endpoints: ReadonlyMap<string, LedgerEndpoint>;
   categories: Category[];
+  /** Used only to name a Project on the rows that belong to one. */
+  projects?: Project[];
   onEdit: (tx: Transaction) => void;
   onDelete: (tx: Transaction) => void;
   runningBalance?: number;
@@ -38,6 +41,11 @@ export function EntryRow({
 }) {
   const { t } = useTranslation();
   const category = categories.find((c) => c.id === tx.categoryId);
+  // Named, not just flagged. Automatic stamping (ADR-0009) is the main new way
+  // to be wrong — an order placed from home mid-trip gets the trip — and a
+  // wrong stamp is invisible in a list where every row looks identical. Rows
+  // with no Project are untouched, so everyday review gains no clutter.
+  const project = tx.projectId ? projects?.find((p) => p.id === tx.projectId) : undefined;
   const from = endpointName(tx.accountId, endpoints);
   const to = endpointName(tx.toAccountId, endpoints);
   const label =
@@ -105,6 +113,7 @@ export function EntryRow({
           <p className="truncate text-xs text-slate-500">
             {from}
             {authorName && <span className="text-slate-600"> · {authorName}</span>}
+            {project && <span className="text-emerald-500/80"> · {project.name}</span>}
           </p>
         </div>
         <div className="text-right">

@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { formatMoney } from "../../lib/money";
 import type { LedgerEndpoint } from "../../lib/endpoints";
-import type { Category, Transaction } from "../../domain/types";
+import type { Category, Project, Transaction } from "../../domain/types";
 import { EntryRow } from "../../components/EntryRow";
 
 const BASE_CURRENCY = "TWD";
@@ -13,6 +13,7 @@ export function DrillView({
   txns,
   endpoints,
   categories,
+  projects,
   locale,
   onBack,
   onEdit,
@@ -22,6 +23,7 @@ export function DrillView({
   txns: Transaction[];
   endpoints: ReadonlyMap<string, LedgerEndpoint>;
   categories: Category[];
+  projects: Project[];
   locale: string;
   onBack: () => void;
   onEdit: (tx: Transaction) => void;
@@ -56,6 +58,7 @@ export function DrillView({
               locale={locale}
               endpoints={endpoints}
               categories={categories}
+              projects={projects}
               onEdit={onEdit}
               onDelete={onDelete}
             />

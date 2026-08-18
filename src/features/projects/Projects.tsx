@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toDateInputValue, fromDateInputValue } from "../../lib/date";
-import { projectState } from "../../lib/project";
+import { isActive, projectState } from "../../lib/project";
 import { projectRepo } from "../../data/projectRepo";
 import type { Project } from "../../domain/types";
 
@@ -25,16 +25,23 @@ export function Projects({ ledgerId, onClose }: { ledgerId: string; onClose: () 
 
   useEffect(() => projectRepo.subscribe(ledgerId, setProjects), [ledgerId]);
 
-  // "In progress" and "ended" are read off today, never stored.
+  // State is read off today, never stored. `upcoming` is listed separately
+  // rather than lumped in with `active`: a Project that has not started cannot
+  // stamp, and showing it as running would invite turning auto-assign on for
+  // it — which, by the one-at-a-time invariant, switches off the Project that
+  // actually is stamping and leaves nothing stamping at all.
   const today = useMemo(() => new Date(), []);
-  const groups = useMemo(() => {
-    const active = projects.filter((p) => projectState(p, today) === "active");
-    const ended = projects.filter((p) => projectState(p, today) === "ended");
-    return [
-      { key: "projectActive" as const, items: active },
-      { key: "projectEnded" as const, items: ended },
-    ];
-  }, [projects, today]);
+  const groups = useMemo(
+    () =>
+      (["active", "upcoming", "ended"] as const).map((state) => ({
+        state,
+        key: (
+          { active: "projectActive", upcoming: "projectUpcoming", ended: "projectEnded" } as const
+        )[state],
+        items: projects.filter((p) => projectState(p, today) === state),
+      })),
+    [projects, today],
+  );
 
   if (editing) {
     const project = editing.id === null ? undefined : projects.find((p) => p.id === editing.id);
@@ -79,7 +86,7 @@ export function Projects({ ledgerId, onClose }: { ledgerId: string; onClose: () 
         {projects.length === 0 ? (
           <p className="mt-16 text-center text-sm text-slate-600">{t("noProjects")}</p>
         ) : (
-          groups.map(({ key, items }) =>
+          groups.map(({ state, key, items }) =>
             items.length === 0 ? null : (
               <section key={key} className="mt-4 first:mt-0">
                 <h2 className="mb-1 text-xs uppercase tracking-wide text-slate-400">{t(key)}</h2>
@@ -97,7 +104,7 @@ export function Projects({ ledgerId, onClose }: { ledgerId: string; onClose: () 
                             {dateRange(p, i18n.language)}
                           </p>
                         </div>
-                        {p.autoAssign && key === "projectActive" && (
+                        {p.autoAssign && state === "active" && (
                           <span className="shrink-0 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
                             {t("autoAssign")}
                           </span>
@@ -139,7 +146,10 @@ function ProjectForm({
   const [endText, setEndText] = useState(project ? toDateInputValue(project.endDate) : "");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
-  const ended = project ? projectState(project, new Date()) === "ended" : false;
+  // The toggle is offered only while a Project is genuinely running. Offering
+  // it on an upcoming one would let it claim a stamping role it cannot perform
+  // until it starts, at the cost of switching off the Project that can.
+  const canAutoAssign = project ? isActive(project, new Date()) : false;
   const outOfOrder = endText !== "" && endText < startText;
   const canSave = name.trim() !== "" && startText !== "" && endText !== "" && !outOfOrder;
 
@@ -207,7 +217,7 @@ function ProjectForm({
 
         {/* Auto-assign. Offered only on a saved, unfinished Project: an ended
             Project stamps nothing, so the switch would be a lie. */}
-        {project && !ended && (
+        {project && canAutoAssign && (
           <div className="rounded-lg bg-slate-800/50 p-3">
             <label className="flex items-center justify-between gap-3">
               <span className="text-sm text-slate-200">{t("autoAssign")}</span>

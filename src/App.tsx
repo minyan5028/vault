@@ -172,6 +172,7 @@ function AuthedApp({ user }: { user: User }) {
           accounts={accounts}
           endpoints={endpoints}
           categories={categories}
+          projects={projects}
           ledgers={ledgers}
           invites={invites}
           onSelectLedger={setLedgerId}
@@ -187,6 +188,7 @@ function AuthedApp({ user }: { user: User }) {
           ledgerId={ledgerId}
           endpoints={endpoints}
           categories={categories}
+          projects={projects}
           onEdit={(tx) => setEditor({ tx })}
           onDelete={(tx) => deleteTx(tx.id)}
         />
@@ -232,6 +234,7 @@ function AuthedApp({ user }: { user: User }) {
           account={accountView}
           endpoints={endpoints}
           categories={categories}
+          projects={projects}
           onEdit={(tx) => setEditor({ tx })}
           onAddOnDate={(date) => setEditor({ date, accountId: accountView.id })}
           onDelete={(tx) => deleteTx(tx.id)}

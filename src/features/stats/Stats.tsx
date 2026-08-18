@@ -5,7 +5,12 @@ import { useRollups } from "../../data/useRollups";
 import { useTransactionsForMonths } from "../../data/useTransactionsForMonths";
 import { sumRollups } from "../../lib/rollup";
 import type { LedgerEndpoint } from "../../lib/endpoints";
-import { UNCATEGORIZED, type Category, type Transaction } from "../../domain/types";
+import {
+  UNCATEGORIZED,
+  type Category,
+  type Project,
+  type Transaction,
+} from "../../domain/types";
 import { Pill } from "../../components/Pill";
 import { StatCell } from "../../components/StatCell";
 import { TrendChart, type TrendPoint } from "./TrendChart";
@@ -30,12 +35,14 @@ export function Stats({
   ledgerId,
   endpoints,
   categories,
+  projects,
   onEdit,
   onDelete,
 }: {
   ledgerId: string;
   endpoints: ReadonlyMap<string, LedgerEndpoint>;
   categories: Category[];
+  projects: Project[];
   onEdit: (tx: Transaction) => void;
   onDelete: (tx: Transaction) => void;
 }) {
@@ -159,6 +166,7 @@ export function Stats({
             txns={drillTx}
             endpoints={endpoints}
             categories={categories}
+            projects={projects}
             locale={locale}
             onBack={() => setDrill(null)}
             onEdit={onEdit}

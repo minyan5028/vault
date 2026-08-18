@@ -11,7 +11,7 @@ import { LedgerSwitcher } from "../../components/LedgerSwitcher";
 import { AppLogo } from "../../components/AppLogo";
 import { Pill } from "../../components/Pill";
 import type { LedgerEndpoint } from "../../lib/endpoints";
-import type { Account, Category, EventType, Ledger, Transaction } from "../../domain/types";
+import type { Account, Category, Project, EventType, Ledger, Transaction } from "../../domain/types";
 
 const FILTERS: ("all" | EventType)[] = ["all", "expense", "income", "transfer"];
 const BASE_CURRENCY = "TWD";
@@ -26,6 +26,7 @@ export function Timeline({
   accounts,
   endpoints,
   categories,
+  projects,
   ledgers,
   invites,
   onSelectLedger,
@@ -40,6 +41,7 @@ export function Timeline({
   accounts: Account[];
   endpoints: ReadonlyMap<string, LedgerEndpoint>;
   categories: Category[];
+  projects: Project[];
   ledgers: Ledger[];
   invites: Ledger[];
   onSelectLedger: (id: string) => void;
@@ -216,6 +218,7 @@ export function Timeline({
                       locale={locale}
                       endpoints={endpoints}
                       categories={categories}
+                      projects={projects}
                       onEdit={onEdit}
                       onDelete={onDelete}
                       authorName={authorNameFor(e.createdBy)}
