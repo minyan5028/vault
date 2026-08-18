@@ -46,6 +46,10 @@ export function EntryRow({
   // wrong stamp is invisible in a list where every row looks identical. Rows
   // with no Project are untouched, so everyday review gains no clutter.
   const project = tx.projectId ? projects?.find((p) => p.id === tx.projectId) : undefined;
+  // A soft-deleted Project leaves its events pointing at it (ADR-0004). Naming
+  // it "deleted" rather than rendering nothing keeps the row distinguishable
+  // from everyday spending — which is the whole reason the marker exists.
+  const projectLabel = tx.projectId ? (project?.name ?? t("deletedProject")) : null;
   const from = endpointName(tx.accountId, endpoints);
   const to = endpointName(tx.toAccountId, endpoints);
   const label =
@@ -113,7 +117,12 @@ export function EntryRow({
           <p className="truncate text-xs text-slate-500">
             {from}
             {authorName && <span className="text-slate-600"> · {authorName}</span>}
-            {project && <span className="text-emerald-500/80"> · {project.name}</span>}
+            {projectLabel && (
+              <span className={project ? "text-emerald-500/80" : "italic text-slate-600"}>
+                {" · "}
+                {projectLabel}
+              </span>
+            )}
           </p>
         </div>
         <div className="text-right">

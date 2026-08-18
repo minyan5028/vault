@@ -89,8 +89,13 @@ export function selectableProjects(
  * Requires the whole range, not just the flag. Nothing fires when time passes,
  * so a Project left auto-assigning keeps the stored flag after it ends;
  * deriving the answer here is what stops last year's trip stamping this year's
- * lunch. Only ever one Project qualifies, by the Ledger-wide invariant in
- * `planSetAutoAssign`.
+ * lunch.
+ *
+ * `planSetAutoAssign` keeps the flag on one Project per write, but that is not
+ * a global guarantee — a restore, or two members switching at once, can leave
+ * two set. Taking the first of the caller's list is deterministic (the repo
+ * orders by start date, newest first, and `Array.sort` is stable), so the
+ * choice is at least repeatable rather than arbitrary per render.
  */
 export function stampingProject(projects: readonly Project[], date: Date): Project | null {
   return projects.find((p) => p.autoAssign && coversDate(p, date)) ?? null;

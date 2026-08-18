@@ -1,7 +1,12 @@
 /**
- * Backup: export the whole ledger (accounts, categories, transactions,
- * recurring) to JSON or CSV, and restore a JSON backup. Delivers the
- * "own your data" principle (PHILOSOPHY / README).
+ * Backup: export the whole ledger (accounts, categories, projects,
+ * transactions, recurring) to JSON or CSV, and restore a JSON backup. Delivers
+ * the "own your data" principle (PHILOSOPHY / README).
+ *
+ * Every collection a transaction can reference has to travel with it. Without
+ * the projects, a restored ledger holds Financial Events pointing at project
+ * ids that resolve to nothing — unnameable in the Timeline, unofferable in the
+ * picker, and unresolvable keys in the rebuilt rollups.
  */
 import {
   Timestamp,
@@ -23,7 +28,15 @@ const sub = (ledgerId: string, name: string): CollectionReference =>
   collection(db, "ledgers", ledgerId, name);
 
 // Fields stored as Firestore Timestamps across the collections.
-const TS_FIELDS = ["date", "createdAt", "updatedAt", "deletedAt", "startDate", "nextDate"];
+const TS_FIELDS = [
+  "date",
+  "createdAt",
+  "updatedAt",
+  "deletedAt",
+  "startDate",
+  "endDate",
+  "nextDate",
+];
 
 function tsToIso(v: unknown): string | null {
   return v instanceof Timestamp ? v.toDate().toISOString() : null;
@@ -46,13 +59,24 @@ async function readAll(ledgerId: string, name: string, activeOnly = false): Prom
 
 /** Read the whole ledger into a plain, JSON-serializable backup object. */
 export async function buildBackup(ledgerId: string): Promise<Backup> {
-  const [accounts, categories, transactions, recurring] = await Promise.all([
+  const [accounts, categories, projects, transactions, recurring] = await Promise.all([
     readAll(ledgerId, "accounts"),
     readAll(ledgerId, "categories"),
+    // Deleted projects travel too: their events keep pointing at them and the
+    // rollups keep their keys, so dropping them would strand both (ADR-0004).
+    readAll(ledgerId, "projects"),
     readAll(ledgerId, "transactions", true),
     readAll(ledgerId, "recurring"),
   ]);
-  return { version: 1, exportedAt: new Date().toISOString(), accounts, categories, transactions, recurring };
+  return {
+    version: 2, // 2 adds `projects`; a version-1 file simply has none.
+    exportedAt: new Date().toISOString(),
+    accounts,
+    categories,
+    projects,
+    transactions,
+    recurring,
+  };
 }
 
 /** Restore a JSON backup (upsert by id — re-importing the same file is safe). */
@@ -73,6 +97,9 @@ export async function importBackup(ledgerId: string, b: Backup): Promise<Record<
   return {
     accounts: await writeAll("accounts", b.accounts),
     categories: await writeAll("categories", b.categories),
+    // Before the transactions, so a restore never leaves an event referencing a
+    // project that has not landed yet.
+    projects: await writeAll("projects", b.projects),
     transactions: await writeAll("transactions", b.transactions),
     recurring: await writeAll("recurring", b.recurring),
   };

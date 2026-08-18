@@ -158,8 +158,11 @@ export function Stats({
     return () => true;
   }, [openProject, everydayOnly]);
 
+  // `null` means "not scoped"; it also covers "scoped but the transactions have
+  // not landed yet", so the breakdown is withheld rather than drawn as an empty
+  // donut around a real total.
   const scopedRows = useMemo(() => {
-    if (!scoped) return null;
+    if (!scoped || periodTx.length === 0) return null;
     const m = new Map<string, number>();
     for (const tx of periodTx) {
       if (tx.type !== mode || !inScope(tx)) continue;
@@ -172,6 +175,7 @@ export function Stats({
       .sort((a, b) => b.amount - a.amount);
   }, [scoped, periodTx, mode, inScope]);
 
+  const awaitingScope = scoped && scopedRows === null;
   const rows = scopedRows ?? rollupRows;
   // Donut slices: the top 6 categories keep distinct colors; the rest fold into
   // one neutral "Other" slice (dataviz: never cycle a categorical palette).
@@ -230,6 +234,12 @@ export function Stats({
   useEffect(() => {
     if (view !== "project") setOpenProject(null);
   }, [view]);
+  // Everyday-only cannot mean anything in a period with no Project spending.
+  // Clear the state, not just its effect, so navigating away and back does not
+  // silently switch it on again.
+  useEffect(() => {
+    if (projectTotal === 0) setEverydayOnly(false);
+  }, [projectTotal]);
 
   const shift = (d: number) => setAnchor((a) => shiftMonth(a, period === "year" ? d * 12 : d));
   const heading = period === "year" ? anchor.slice(0, 4) : monthLabel(anchor, locale);
@@ -317,9 +327,11 @@ export function Stats({
                 <span className="text-slate-200">{formatMoney(projectTotal, "TWD", locale)}</span>
               </button>
             </div>
-            <Pill active={everydayOnly} onClick={() => setEverydayOnly((v) => !v)}>
-              {t("everydayOnly")}
-            </Pill>
+            {view === "category" && (
+              <Pill active={everydayOnly} onClick={() => setEverydayOnly((v) => !v)}>
+                {t("everydayOnly")}
+              </Pill>
+            )}
           </div>
         )}
 
@@ -345,6 +357,7 @@ export function Stats({
             <ProjectList
               totals={periodProjects}
               projects={projects}
+              mode={mode}
               locale={locale}
               onOpen={(id, label) => {
                 setOpenProject(id);
@@ -360,14 +373,18 @@ export function Stats({
               >
                 ‹ {openLabel}
               </button>
-              <CategoryBreakdown
-                rows={rows}
-                donut={donut}
-                total={breakdownTotal}
-                categories={categories}
-                locale={locale}
-                onDrill={(key, label) => setDrill({ kind: "category", key, label })}
-              />
+              {/* Nothing at all while the scoped read is in flight — a zero
+                  total would render "no entries yet", which is a claim. */}
+              {!awaitingScope && (
+                <CategoryBreakdown
+                  rows={rows}
+                  donut={donut}
+                  total={breakdownTotal}
+                  categories={categories}
+                  locale={locale}
+                  onDrill={(key, label) => setDrill({ kind: "category", key, label })}
+                />
+              )}
             </>
           )
         ) : view === "trend" ? (
@@ -379,14 +396,16 @@ export function Stats({
             onDrill={(title) => setDrill({ kind: "title", key: title, label: title })}
           />
         ) : (
-          <CategoryBreakdown
-            rows={rows}
-            donut={donut}
-            total={breakdownTotal}
-            categories={categories}
-            locale={locale}
-            onDrill={(key, label) => setDrill({ kind: "category", key, label })}
-          />
+          !awaitingScope && (
+            <CategoryBreakdown
+              rows={rows}
+              donut={donut}
+              total={breakdownTotal}
+              categories={categories}
+              locale={locale}
+              onDrill={(key, label) => setDrill({ kind: "category", key, label })}
+            />
+          )
         )}
           </>
         )}

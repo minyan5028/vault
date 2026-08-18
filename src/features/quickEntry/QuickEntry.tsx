@@ -455,6 +455,14 @@ export function QuickEntry({
                   {p.name}
                 </button>
               ))}
+              {/* The attached Project was soft-deleted, so nothing in `offered`
+                  matches it. Without a chip of its own the picker would show
+                  every option unselected while the entry does carry one. */}
+              {projectId !== null && !offered.some((p) => p.id === projectId) && (
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-sm italic text-slate-500">
+                  {t("deletedProject")}
+                </span>
+              )}
             </div>
           </section>
         )}

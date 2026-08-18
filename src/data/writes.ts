@@ -320,6 +320,15 @@ export function planRestoreEvent(
  * turned on in the same write that turns the previous one off.
  *
  * Turning auto-assign *off* touches only the named Project.
+ *
+ * **The invariant is per-write, not global.** This plan is decided from the
+ * caller's snapshot and committed as a batch, not a read-modify-write
+ * transaction, so two members of a shared Ledger switching at the same moment
+ * can both succeed; so can restoring a backup taken while a different Project
+ * was stamping. `stampingProject` therefore resolves the list deterministically
+ * rather than assuming exactly one qualifies. Making this globally atomic means
+ * a Firestore transaction over the whole collection — worth it only if two
+ * stamping Projects is ever observed.
  */
 export function planSetAutoAssign(
   ledgerId: string,
