@@ -4,11 +4,12 @@ import type { Account, Category, Ledger } from "../../domain/types";
 import { signOutUser } from "../../auth/useAuth";
 import { Manage } from "../manage/Manage";
 import { Recurring } from "../recurring/Recurring";
+import { Projects } from "../projects/Projects";
 import { Backup } from "../backup/Backup";
 import { LedgerSettings } from "./LedgerSettings";
 import { AppLogo } from "../../components/AppLogo";
 
-type Sub = "catalog" | "recurring" | "backup" | "ledger" | null;
+type Sub = "catalog" | "recurring" | "projects" | "backup" | "ledger" | null;
 
 /**
  * Settings hub — the home for configuration. Keeps the Timeline header
@@ -56,6 +57,9 @@ export function Settings({
       />
     );
   }
+  if (sub === "projects") {
+    return <Projects ledgerId={ledgerId} onClose={() => setSub(null)} />;
+  }
   if (sub === "backup") {
     return <Backup ledgerId={ledgerId} onClose={() => setSub(null)} />;
   }
@@ -87,6 +91,7 @@ export function Settings({
           <Row label={t("catalog")} onClick={() => setSub("catalog")} chevron />
           {ledger && <Row label={t("sharing")} onClick={() => setSub("ledger")} chevron />}
           <Row label={t("recurring")} onClick={() => setSub("recurring")} chevron />
+          <Row label={t("projects")} onClick={() => setSub("projects")} chevron />
           <Row label={t("backup")} onClick={() => setSub("backup")} chevron />
           <Row
             label={t("language")}

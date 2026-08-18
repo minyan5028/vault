@@ -2,8 +2,8 @@
 
 The business domain and its ubiquitous language live in
 [docs/SPEC.md](docs/SPEC.md): **Vault**, **Ledger**, **Timeline**, **Financial
-Event**, **Money**, **Account**, **Category**, **Projections**. Decisions that
-shaped them are in [docs/ADR/](docs/ADR/).
+Event**, **Money**, **Account**, **Category**, **Project**, **Projections**.
+Decisions that shaped them are in [docs/ADR/](docs/ADR/).
 
 This file names the concepts that emerged from the code afterwards — terms a
 reader will meet in the source that `SPEC.md` does not define. Keep it short:

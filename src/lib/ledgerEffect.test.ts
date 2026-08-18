@@ -8,6 +8,15 @@ import {
   type EventProjectionFields,
   type StoredEventFields,
 } from "./ledgerEffect";
+import { emptyBreakdowns, type RollupContribution } from "../domain/types";
+
+/** A whole month contribution, naming only the maps a case is about. */
+const contribution = (over: Partial<RollupContribution>): RollupContribution => ({
+  income: 0,
+  expense: 0,
+  ...emptyBreakdowns(),
+  ...over,
+});
 
 const expense = (over: Partial<EventProjectionFields> = {}): EventProjectionFields => ({
   type: "expense",
@@ -16,6 +25,7 @@ const expense = (over: Partial<EventProjectionFields> = {}): EventProjectionFiel
   amount: 300,
   baseAmount: 300,
   categoryId: "food",
+  projectId: null,
   yearMonth: "2026-07",
   ...over,
 });
@@ -28,6 +38,7 @@ const transfer = (over: Partial<EventProjectionFields> = {}): EventProjectionFie
   toAmount: 1000,
   baseAmount: 1000,
   categoryId: null,
+  projectId: null,
   yearMonth: "2026-07",
   ...over,
 });
@@ -39,7 +50,7 @@ describe("ledgerEffect — recording an event", () => {
     const e = ledgerEffect(null, expense());
     expect(e.balanceDeltas).toEqual({ cash: -300 });
     expect(months(e)).toEqual({
-      "2026-07": { income: 0, expense: 300, expenseByCategory: { food: 300 }, incomeByCategory: {} },
+      "2026-07": contribution({ expense: 300, expenseByCategory: { food: 300 } }),
     });
   });
 
@@ -90,18 +101,8 @@ describe("ledgerEffect — editing", () => {
     // The balance is date-independent, so moving the date alone moves no money.
     expect(e.balanceDeltas).toEqual({});
     expect(months(e)).toEqual({
-      "2026-07": {
-        income: 0,
-        expense: -300,
-        expenseByCategory: { food: -300 },
-        incomeByCategory: {},
-      },
-      "2026-08": {
-        income: 0,
-        expense: 300,
-        expenseByCategory: { food: 300 },
-        incomeByCategory: {},
-      },
+      "2026-07": contribution({ expense: -300, expenseByCategory: { food: -300 } }),
+      "2026-08": contribution({ expense: 300, expenseByCategory: { food: 300 } }),
     });
   });
 
@@ -192,6 +193,7 @@ describe("mergedEvent", () => {
     baseAmount: 900,
     fxRate: 3,
     categoryId: "food",
+  projectId: null,
     yearMonth: "2026-07",
   };
 

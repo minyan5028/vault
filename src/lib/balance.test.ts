@@ -23,6 +23,7 @@ function tx(p: {
     type: p.type,
     amount: p.baseAmount,
     currency: "TWD",
+    projectId: null,
     toAmount: p.toAmount ?? p.baseAmount,
     baseAmount: p.baseAmount,
     baseCurrency: "TWD",

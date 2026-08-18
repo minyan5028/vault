@@ -146,6 +146,43 @@ Categories may evolve over time.
 
 Historical events should remain meaningful regardless of category changes.
 
+Categories answer what kind of money an event is.
+
+They do not answer which episode of life it belonged to.
+
+---
+
+## Project
+
+A Project is a bounded, non-daily episode of spending that spans several
+Categories.
+
+A trip, a wedding, a renovation.
+
+A Project is a second classification, independent of Category.
+
+Category asks what kind of money this is.
+
+Project asks which episode it belonged to.
+
+A Financial Event carries both, or carries only a Category.
+
+Every Project ends.
+
+An end date is required, may be extended, and is never absent.
+
+A Project that cannot end is not a Project.
+
+A Project holds no money.
+
+It is not an Account, has no balance, and never enters net worth.
+
+Its figure is the net of the events attributed to it.
+
+Projects exist so that everyday spending remains comparable between months.
+
+Removing a Project must never remove or reinterpret the events attributed to it.
+
 ---
 
 ## Tags

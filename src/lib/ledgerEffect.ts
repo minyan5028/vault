@@ -18,7 +18,7 @@
  */
 import { accountDeltas, pruneZeroDeltas } from "./balance";
 import { addContribution, monthContribution, type RollupContribution } from "./rollup";
-import type { EventType } from "../domain/types";
+import { BREAKDOWNS, type EventType } from "../domain/types";
 
 /**
  * The fields of a Financial Event that drive the projections — deliberately
@@ -37,6 +37,8 @@ export interface EventProjectionFields {
   /** TWD snapshot locked at entry (ADR-0002) — drives the month rollups only. */
   baseAmount: number;
   categoryId: string | null;
+  /** The Project the event belongs to, or null for everyday spending. */
+  projectId: string | null;
   yearMonth: string;
 }
 
@@ -67,13 +69,18 @@ function mergeDeltas(into: Record<string, number>, from: Record<string, number>)
   for (const [account, v] of Object.entries(from)) into[account] = (into[account] ?? 0) + v;
 }
 
+/**
+ * True when a contribution moves nothing at all.
+ *
+ * Iterates every breakdown dimension rather than naming them. An edit that only
+ * moves a Financial Event between Projects changes neither amount nor category,
+ * so a dimension missing from this check would make a real change look like no
+ * change — `pruneZeroContributions` would drop the write and the rollup would
+ * silently keep the old figure.
+ */
 function isZeroContribution(c: RollupContribution): boolean {
-  return (
-    c.income === 0 &&
-    c.expense === 0 &&
-    Object.values(c.expenseByCategory).every((v) => v === 0) &&
-    Object.values(c.incomeByCategory).every((v) => v === 0)
-  );
+  if (c.income !== 0 || c.expense !== 0) return false;
+  return BREAKDOWNS.every((b) => Object.values(c[b]).every((v) => v === 0));
 }
 
 /** Drop months whose contribution cancels out entirely — an increment of zero
@@ -145,7 +152,14 @@ export function combineEffects(effects: readonly LedgerEffect[]): LedgerEffect {
 export type EventPatch = Partial<
   Pick<
     EventProjectionFields,
-    "type" | "accountId" | "toAccountId" | "amount" | "toAmount" | "baseAmount" | "categoryId"
+    | "type"
+    | "accountId"
+    | "toAccountId"
+    | "amount"
+    | "toAmount"
+    | "baseAmount"
+    | "categoryId"
+    | "projectId"
   >
 > & {
   /** A new event date; the caller derives its yearMonth and passes it here. */
@@ -165,6 +179,7 @@ export interface StoredEventFields {
   baseAmount?: number;
   fxRate?: number;
   categoryId?: string | null;
+  projectId?: string | null;
   yearMonth: string;
 }
 
@@ -176,8 +191,9 @@ export interface StoredEventFields {
  *  - `baseAmount` is re-derived from `amount × fxRate` unless the patch states
  *    it explicitly. Trusting the stored `baseAmount` let an amount-only edit
  *    leave the month rollups showing the old figure.
- *  - `toAccountId` / `categoryId` distinguish "absent from the patch" (keep the
- *    stored value) from an explicit `null` (clear it), which `??` cannot.
+ *  - `toAccountId` / `categoryId` / `projectId` distinguish "absent from the
+ *    patch" (keep the stored value) from an explicit `null` (clear it), which
+ *    `??` cannot. Detaching a Project is exactly that explicit null.
  */
 export function mergedEvent(
   old: StoredEventFields,
@@ -193,6 +209,7 @@ export function mergedEvent(
     toAmount: patch.toAmount !== undefined ? patch.toAmount : (old.toAmount ?? old.amount),
     baseAmount: patch.baseAmount ?? Math.round(amount * fxRate),
     categoryId: patch.categoryId !== undefined ? patch.categoryId : (old.categoryId ?? null),
+    projectId: patch.projectId !== undefined ? patch.projectId : (old.projectId ?? null),
     yearMonth: patch.yearMonth ?? old.yearMonth,
   };
 }
@@ -208,6 +225,7 @@ export function storedEvent(old: StoredEventFields): EventProjectionFields {
     toAmount: old.toAmount ?? old.amount,
     baseAmount: old.baseAmount ?? 0,
     categoryId: old.categoryId ?? null,
+    projectId: old.projectId ?? null,
     yearMonth: old.yearMonth,
   };
 }

@@ -26,7 +26,13 @@ import {
 } from "firebase/firestore";
 import { yearMonthOf } from "../lib/date";
 import type { StoredEventFields } from "../lib/ledgerEffect";
-import type { EventType, MonthlyRollup, Transaction } from "../domain/types";
+import {
+  BREAKDOWNS,
+  emptyBreakdowns,
+  type EventType,
+  type MonthlyRollup,
+  type Transaction,
+} from "../domain/types";
 import { collectionRef, commitPlan, commitPlanned, docRef, newDocId } from "./firestoreExec";
 import {
   EMPTY_PLAN,
@@ -79,18 +85,21 @@ export function asStored(d: DocumentData): StoredEventFields {
     baseAmount: d.baseAmount,
     fxRate: d.fxRate,
     categoryId: d.categoryId ?? null,
+    projectId: d.projectId ?? null,
     yearMonth: d.yearMonth ?? yearMonthOf((d.date as Timestamp).toDate()),
   };
 }
 
 function rollupFromSnapshot(snap: QueryDocumentSnapshot<DocumentData>): MonthlyRollup {
   const d = snap.data();
+  const maps = emptyBreakdowns();
+  // Documents written before a dimension existed simply lack the field.
+  for (const b of BREAKDOWNS) maps[b] = d[b] ?? {};
   return {
     yearMonth: d.yearMonth ?? snap.id,
     income: d.income ?? 0,
     expense: d.expense ?? 0,
-    expenseByCategory: d.expenseByCategory ?? {},
-    incomeByCategory: d.incomeByCategory ?? {},
+    ...maps,
   };
 }
 
@@ -108,6 +117,7 @@ function fromSnapshot(snap: QueryDocumentSnapshot<DocumentData>): Transaction {
     date: (d.date as Timestamp).toDate(),
     yearMonth: d.yearMonth,
     categoryId: d.categoryId ?? null,
+    projectId: d.projectId ?? null,
     accountId: d.accountId,
     toAccountId: d.toAccountId ?? null,
     title: d.title,

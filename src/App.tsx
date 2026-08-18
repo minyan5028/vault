@@ -61,7 +61,7 @@ function AuthedApp({ user }: { user: User }) {
     [subscribed, pending],
   );
   const activeLedger = ledgers.find((l) => l.id === ledgerId);
-  const { accounts, categories } = useLedgerData(ready ? ledgerId : "");
+  const { accounts, categories, projects } = useLedgerData(ready ? ledgerId : "");
   // One holdings subscription, two derived views: the endpoint index (a trade's
   // cash leg names a Holding, so rows resolved against accounts alone would
   // render it nameless) and the quarterly price reminder.
@@ -253,6 +253,7 @@ function AuthedApp({ user }: { user: User }) {
           ledgerId={ledgerId}
           accounts={accounts}
           categories={categories}
+          projects={projects}
           onSubmit={(draft) => {
             if (editor.tx && !editor.copy) transactionRepo.update(ledgerId, editor.tx.id, draft);
             else void transactionRepo.add(ledgerId, { ...draft, createdBy: user.uid });

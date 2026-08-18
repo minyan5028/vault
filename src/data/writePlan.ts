@@ -77,6 +77,11 @@ export const transactionPath = (ledgerId: string, txId: string): DocPath => [
   ...transactionsPath(ledgerId),
   txId,
 ];
+export const projectsPath = (ledgerId: string): DocPath => [...ledgerPath(ledgerId), "projects"];
+export const projectPath = (ledgerId: string, projectId: string): DocPath => [
+  ...projectsPath(ledgerId),
+  projectId,
+];
 export const rollupsPath = (ledgerId: string): DocPath => [...ledgerPath(ledgerId), "rollups"];
 export const holdingsPath = (ledgerId: string): DocPath => [...ledgerPath(ledgerId), "holdings"];
 export const tradesPath = (ledgerId: string, holdingId: string): DocPath => [

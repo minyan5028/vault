@@ -20,7 +20,13 @@ import {
   type StoredEventFields,
 } from "../lib/ledgerEffect";
 import type { RollupContribution } from "../lib/rollup";
-import type { EventType, Holding, SnapshotEntry, TradeKind } from "../domain/types";
+import {
+  BREAKDOWNS,
+  type EventType,
+  type Holding,
+  type SnapshotEntry,
+  type TradeKind,
+} from "../domain/types";
 import {
   atTime,
   balanceRollupPath,
@@ -29,6 +35,7 @@ import {
   holdingPath,
   incrementBy,
   monthRollupPath,
+  projectPath,
   serverTime,
   snapshotPath,
   tradePath,
@@ -53,6 +60,8 @@ export interface NewTransactionInput {
   fxRate: number;
   date: Date;
   categoryId: string | null;
+  /** The Project this event belongs to, null for everyday spending (ADR-0009). */
+  projectId: string | null;
   accountId: string;
   toAccountId: string | null;
   title: string;
@@ -113,15 +122,15 @@ function monthRollupData(yearMonth: string, c: RollupContribution): PlanData {
   const data: PlanData = { yearMonth, updatedAt: serverTime() };
   if (c.income !== 0) data.income = incrementBy(c.income);
   if (c.expense !== 0) data.expense = incrementBy(c.expense);
-  const byCategory = (m: Record<string, number>): PlanData | null => {
+  const increments = (m: Record<string, number>): PlanData | null => {
     const out: PlanData = {};
     for (const [k, v] of Object.entries(m)) if (v !== 0) out[k] = incrementBy(v);
     return Object.keys(out).length ? out : null;
   };
-  const expenseByCategory = byCategory(c.expenseByCategory);
-  const incomeByCategory = byCategory(c.incomeByCategory);
-  if (expenseByCategory) data.expenseByCategory = expenseByCategory;
-  if (incomeByCategory) data.incomeByCategory = incomeByCategory;
+  for (const b of BREAKDOWNS) {
+    const map = increments(c[b]);
+    if (map) data[b] = map;
+  }
   return data;
 }
 
@@ -174,6 +183,7 @@ function eventDocData(input: NewTransactionInput): PlanData {
     date: atTime(input.date),
     yearMonth: yearMonthOf(input.date),
     categoryId: input.categoryId,
+    projectId: input.projectId,
     accountId: input.accountId,
     toAccountId: input.toAccountId,
     title: input.title,
@@ -195,6 +205,7 @@ export function projected(input: NewTransactionInput): EventProjectionFields {
     toAmount: input.toAmount ?? input.amount,
     baseAmount: input.baseAmount,
     categoryId: input.categoryId,
+    projectId: input.projectId,
     yearMonth: yearMonthOf(input.date),
   };
 }
@@ -298,6 +309,42 @@ export function planRestoreEvent(
   );
 }
 
+/**
+ * Turn auto-assignment on or off for one Project, keeping the Ledger-wide
+ * invariant that **at most one Project is auto-assigning at a time**.
+ *
+ * `projectId` is single-valued on a Financial Event, so two Projects stamping
+ * at once would force the app to guess which one a purchase belongs to — and a
+ * wrong guess there is silent. Switching is therefore a decision the owner
+ * makes once, expressed here as one atomic plan: the newly chosen Project is
+ * turned on in the same write that turns the previous one off.
+ *
+ * Turning auto-assign *off* touches only the named Project.
+ */
+export function planSetAutoAssign(
+  ledgerId: string,
+  projects: readonly { id: string; autoAssign: boolean }[],
+  projectId: string,
+  on: boolean,
+): WritePlan {
+  const ops: WriteOp[] = [];
+  if (on) {
+    for (const p of projects)
+      if (p.id !== projectId && p.autoAssign)
+        ops.push({
+          kind: "update",
+          path: projectPath(ledgerId, p.id),
+          data: { autoAssign: false, updatedAt: serverTime() },
+        });
+  }
+  ops.push({
+    kind: "update",
+    path: projectPath(ledgerId, projectId),
+    data: { autoAssign: on, updatedAt: serverTime() },
+  });
+  return { ops };
+}
+
 // ── Holding writes ────────────────────────────────────────────────────────────
 
 /**
@@ -322,6 +369,9 @@ export function tradeTransfer(
     fxRate: 1,
     date: input.date,
     categoryId: null,
+    // A trade's cash leg is a transfer: it contributes to no total, and it
+    // belongs to no episode of spending.
+    projectId: null,
     accountId: kind === "buy" ? cashAccountId : holding.id,
     toAccountId: kind === "buy" ? holding.id : cashAccountId,
     title: holding.ticker,

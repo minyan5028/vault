@@ -38,7 +38,16 @@ function derive(txDocs) {
   };
   const month = (ym) => {
     if (!months.has(ym)) {
-      months.set(ym, { income: 0, expense: 0, expenseByCategory: {}, incomeByCategory: {} });
+      // Must carry every dimension in BREAKDOWNS (src/domain/types.ts); a
+      // missing one would silently audit as "matches".
+      months.set(ym, {
+        income: 0,
+        expense: 0,
+        expenseByCategory: {},
+        incomeByCategory: {},
+        expenseByProject: {},
+        incomeByProject: {},
+      });
     }
     return months.get(ym);
   };
@@ -64,12 +73,15 @@ function derive(txDocs) {
     const ym = t.yearMonth ?? yearMonthOf(t.date.toDate());
     const m = month(ym);
     const cat = t.categoryId ?? UNCATEGORIZED;
+    const proj = t.projectId ?? null; // sparse: no key for everyday spending
     if (t.type === "income") {
       m.income += t.baseAmount;
       m.incomeByCategory[cat] = (m.incomeByCategory[cat] ?? 0) + t.baseAmount;
+      if (proj) m.incomeByProject[proj] = (m.incomeByProject[proj] ?? 0) + t.baseAmount;
     } else {
       m.expense += t.baseAmount;
       m.expenseByCategory[cat] = (m.expenseByCategory[cat] ?? 0) + t.baseAmount;
+      if (proj) m.expenseByProject[proj] = (m.expenseByProject[proj] ?? 0) + t.baseAmount;
     }
   }
   return { netFlow, months, active };
@@ -136,6 +148,8 @@ async function audit(ledgerId) {
       expense: 0,
       expenseByCategory: {},
       incomeByCategory: {},
+      expenseByProject: {},
+      incomeByProject: {},
     };
     const got = stored.get(ym) ?? {};
     const issues = [];
@@ -148,6 +162,8 @@ async function audit(ledgerId) {
     for (const [field, wantMap] of [
       ["expenseByCategory", want.expenseByCategory],
       ["incomeByCategory", want.incomeByCategory],
+      ["expenseByProject", want.expenseByProject],
+      ["incomeByProject", want.incomeByProject],
     ]) {
       for (const d of diffMaps(wantMap, got[field] ?? {})) {
         issues.push(`${field}.${d.key} derived ${money(d.expected)} vs stored ${money(d.actual)}`);

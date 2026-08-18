@@ -42,6 +42,10 @@ export async function materializeRecurring(ledgerId: string, uid: string): Promi
         title: rule.title,
         note: rule.note,
         createdBy: uid,
+      // Never stamped with a Project. Rent, insurance and telecom keep being
+      // charged while the owner is away on a trip, and none of it is trip
+      // spending (ADR-0009).
+      projectId: null,
       });
       next = advance(next, rule);
       generated += 1;

@@ -1,6 +1,12 @@
 // Rebuild per-month rollups (ledgers/{id}/rollups/{yearMonth}) from scratch.
 // Doubles as a repair tool: clears existing rollup docs, then writes fresh
 // absolute totals so any drift from the maintained increments is corrected.
+//
+// This is a second implementation of the math in `src/lib/rollup.ts` — a Node
+// script cannot import the TypeScript module. It must carry EVERY breakdown
+// dimension listed in `BREAKDOWNS` (`src/domain/types.ts`): the script DELETES
+// the existing docs before writing, so a dimension missing here is not merely
+// unrepaired, it is erased. `scripts/audit_projections.mjs` holds a third copy.
 // Usage: node scripts/recompute_rollups.mjs <ledgerId> [<ledgerId> ...]
 import { initializeApp, cert } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
@@ -15,10 +21,17 @@ async function recompute(ledgerId) {
   const ledger = db.collection("ledgers").doc(ledgerId);
   const snap = await ledger.collection("transactions").get();
 
-  const months = new Map(); // yearMonth -> { income, expense, expenseByCategory, incomeByCategory }
+  const months = new Map(); // yearMonth -> { income, expense, ...BREAKDOWNS }
   const bump = (ym) => {
     if (!months.has(ym))
-      months.set(ym, { income: 0, expense: 0, expenseByCategory: {}, incomeByCategory: {} });
+      months.set(ym, {
+        income: 0,
+        expense: 0,
+        expenseByCategory: {},
+        incomeByCategory: {},
+        expenseByProject: {},
+        incomeByProject: {},
+      });
     return months.get(ym);
   };
   let active = 0;
@@ -29,12 +42,16 @@ async function recompute(ledgerId) {
     active++;
     const m = bump(t.yearMonth);
     const cat = t.categoryId ?? UNCATEGORIZED;
+    // Projects are sparse: no key at all for everyday spending (ADR-0009).
+    const proj = t.projectId ?? null;
     if (t.type === "income") {
       m.income += t.baseAmount;
       m.incomeByCategory[cat] = (m.incomeByCategory[cat] || 0) + t.baseAmount;
+      if (proj) m.incomeByProject[proj] = (m.incomeByProject[proj] || 0) + t.baseAmount;
     } else if (t.type === "expense") {
       m.expense += t.baseAmount;
       m.expenseByCategory[cat] = (m.expenseByCategory[cat] || 0) + t.baseAmount;
+      if (proj) m.expenseByProject[proj] = (m.expenseByProject[proj] || 0) + t.baseAmount;
     }
   });
 

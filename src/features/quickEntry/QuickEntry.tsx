@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { formatMoney, toMinor, toMajor } from "../../lib/money";
 import { toDateInputValue, fromDateInputValue } from "../../lib/date";
-import type { Account, Category, EventType, Transaction } from "../../domain/types";
+import { selectableProjects } from "../../lib/project";
+import type { Account, Category, EventType, Project, Transaction } from "../../domain/types";
 import { transactionRepo, type EntryDraft, type TitleSuggestion } from "../../data/transactionRepo";
 import { holdingRepo } from "../../data/holdingRepo";
 import { TypeToggle } from "../../components/TypeToggle";
@@ -22,6 +23,9 @@ interface QuickEntryProps {
   ledgerId: string;
   accounts: Account[];
   categories: Category[];
+  /** Live Projects for the Ledger. Empty is the common case — the control is
+   *  then absent and this screen is exactly what it was before ADR-0009. */
+  projects: Project[];
   onSubmit: (draft: EntryDraft) => void;
   onDelete?: () => void;
   /** When editing, offer "duplicate" — reopen prefilled as a new entry. */
@@ -62,6 +66,7 @@ export function QuickEntry({
   ledgerId,
   accounts,
   categories,
+  projects,
   onSubmit,
   onDelete,
   onCopy,
@@ -82,6 +87,9 @@ export function QuickEntry({
       ? initial.categoryId
       : (categories.find((c) => c.type === "expense" && !c.archived)?.id ?? null),
   );
+  // Editing keeps whatever the event already carries; a new entry starts with
+  // none. Auto-assignment (ADR-0009) prefills this instead, in a later slice.
+  const [projectId, setProjectId] = useState<string | null>(initial?.projectId ?? null);
   const [title, setTitle] = useState(initial?.title ?? "");
   const [date, setDate] = useState<Date>(() => initial?.date ?? initialDate ?? new Date());
   const [showNote, setShowNote] = useState(!!initial?.note);
@@ -113,6 +121,14 @@ export function QuickEntry({
     }, 200);
     return () => clearTimeout(h);
   }, [title, titleFocused, ledgerId]);
+
+  // Which Projects are worth offering for *this* entry — see
+  // `selectableProjects`. Follows the date field, so pushing an entry back into
+  // a finished trip brings that trip back into the picker.
+  const offered = useMemo(
+    () => selectableProjects(projects, date, new Date(), projectId),
+    [projects, date, projectId],
+  );
 
   const minor = useMemo(() => parseMinor(amountText), [amountText]);
   const account = accounts.find((a) => a.id === accountId);
@@ -158,6 +174,10 @@ export function QuickEntry({
       fxRate: rate,
       date,
       categoryId: isTransfer ? null : categoryId,
+      // Deliberately kept on every type, transfers included: buying foreign
+      // cash for a trip is worth tracing to it, even though a transfer moves
+      // no total (ADR-0009).
+      projectId,
       accountId,
       toAccountId: isTransfer ? toAccountId : null,
       title: title.trim(),
@@ -383,6 +403,43 @@ export function QuickEntry({
               ))}
           </div>
         </section>
+
+        {/* Project — the second classification axis (ADR-0009). Absent entirely
+            when the Ledger has none, so the everyday path is untouched. */}
+        {offered.length > 0 && (
+          <section className="mt-4">
+            <p className="mb-2 text-xs uppercase tracking-wide text-slate-500">{t("projects")}</p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setProjectId(null)}
+                className={
+                  "rounded-full px-3 py-1 text-sm " +
+                  (projectId === null
+                    ? "bg-slate-100 text-slate-900"
+                    : "bg-slate-800 text-slate-300")
+                }
+              >
+                {t("noProject")}
+              </button>
+              {offered.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => setProjectId(p.id)}
+                  className={
+                    "rounded-full px-3 py-1 text-sm " +
+                    (projectId === p.id
+                      ? "bg-slate-100 text-slate-900"
+                      : "bg-slate-800 text-slate-300")
+                  }
+                >
+                  {p.name}
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* Optional note */}
         <section className="mt-4 space-y-2">

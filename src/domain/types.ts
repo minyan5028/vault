@@ -51,6 +51,33 @@ export interface Category {
   sortOrder: number;
 }
 
+/**
+ * A bounded, non-daily episode of spending that spans several Categories — a
+ * trip, a wedding, a renovation (SPEC.md, ADR-0009).
+ *
+ * The second classification axis: a Category says what kind of money a
+ * Financial Event is, a Project says which episode it belonged to. A Project
+ * holds no money — it is not an Account, has no balance, and never enters net
+ * worth.
+ *
+ * Its lifecycle is derived rather than stored: see `lib/project.ts`. There is
+ * no `archived` flag because `endDate` already does that work.
+ */
+export interface Project {
+  id: string;
+  name: string;
+  startDate: Date;
+  /** Mandatory. Extendable, never absent — a Project that cannot end is not a
+   *  Project. Past this date the Project has ended and stamps nothing. */
+  endDate: Date;
+  /** Stamp new manual entries with this Project. At most one per Ledger, an
+   *  invariant enforced in the write plan (`planSetAutoAssign`). */
+  autoAssign: boolean;
+  /** Soft delete (ADR-0004). Financial Events keep pointing at a deleted
+   *  Project — history is not rewritten because the catalog changed. */
+  deletedAt: Date | null;
+}
+
 /** Financial Event kind. Starts here; grows later (dividend, asset_buy, …). */
 export type EventType = "expense" | "income" | "transfer";
 
@@ -81,20 +108,51 @@ export interface RecurringRule {
 export const UNCATEGORIZED = "uncategorized";
 
 /**
+ * The breakdown maps a month's rollup carries, named once.
+ *
+ * Every place that folds contributions together — accumulating them, summing
+ * months, deciding whether a change is worth writing, turning one into
+ * Firestore increments — iterates this list instead of naming each map by
+ * hand. Adding a dimension is therefore data rather than four more
+ * hand-written loops, and the zero-check cannot silently miss one: an edit
+ * that moves a Financial Event between Projects changes neither amount nor
+ * category, and a missed map would make it look like no change at all.
+ */
+export const BREAKDOWNS = [
+  "expenseByCategory",
+  "incomeByCategory",
+  "expenseByProject",
+  "incomeByProject",
+] as const;
+
+export type Breakdown = (typeof BREAKDOWNS)[number];
+
+/** One map per breakdown dimension: key → integer minor units (×100). */
+export type Breakdowns = Record<Breakdown, Record<string, number>>;
+
+/**
+ * The signed contribution of one or more Financial Events to a month.
+ *
+ * Category maps key on categoryId, or `UNCATEGORIZED` when null. Project maps
+ * are **sparse**: a Financial Event with no Project contributes no key at all,
+ * so everyday spending is `expense − Σ expenseByProject` rather than a sentinel
+ * entry duplicating the total (ADR-0009).
+ */
+export type RollupContribution = { income: number; expense: number } & Breakdowns;
+
+/** An empty set of breakdown maps. */
+export function emptyBreakdowns(): Breakdowns {
+  return { expenseByCategory: {}, incomeByCategory: {}, expenseByProject: {}, incomeByProject: {} };
+}
+
+/**
  * Per-month aggregate for a ledger, maintained on every write (see
  * `transactionRepo`) so Stats/trends read a few small docs instead of every
  * transaction. Stored at `ledgers/{id}/rollups/{yearMonth}`. Transfers are
  * excluded (they move money between accounts, not income/expense). All money
- * fields are integer minor units (×100); category maps key on categoryId, or
- * `UNCATEGORIZED` when null.
+ * fields are integer minor units (×100).
  */
-export interface MonthlyRollup {
-  yearMonth: string;
-  income: number;
-  expense: number;
-  expenseByCategory: Record<string, number>;
-  incomeByCategory: Record<string, number>;
-}
+export type MonthlyRollup = { yearMonth: string } & RollupContribution;
 
 /** A Financial Event. All money fields are integer minor units (×100). */
 export interface Transaction {
@@ -117,6 +175,12 @@ export interface Transaction {
   date: Date;
   yearMonth: string;
   categoryId: string | null;
+  /**
+   * The Project this event belongs to, or null for everyday spending — the
+   * norm. The second classification axis: the category says what kind of money
+   * this is, the project says which episode it belonged to (ADR-0009).
+   */
+  projectId: string | null;
   /**
    * The Ledger Endpoint the money moves from — usually an Account, but a
    * trade's cash leg names the Holding itself (see `tradeTransfer`), so the

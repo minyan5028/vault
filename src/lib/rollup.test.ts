@@ -1,30 +1,47 @@
 import { describe, it, expect } from "vitest";
-import { monthContribution, addContribution, rollupsFrom, type RollupContribution } from "./rollup";
-import { UNCATEGORIZED, type EventType } from "../domain/types";
+import {
+  monthContribution,
+  addContribution,
+  rollupsFrom,
+  everydayExpense,
+  everydayIncome,
+  type RollupContribution,
+} from "./rollup";
+import { UNCATEGORIZED, emptyBreakdowns, type EventType } from "../domain/types";
+
+/** A whole contribution, naming only the maps a case is about. Every other
+ *  dimension comes back empty, so adding one later does not touch these. */
+const contribution = (over: Partial<RollupContribution>): RollupContribution => ({
+  income: 0,
+  expense: 0,
+  ...emptyBreakdowns(),
+  ...over,
+});
 
 const t = (type: EventType, baseAmount: number, categoryId: string | null = null) => ({
   type,
   baseAmount,
   categoryId,
+  projectId: null,
 });
 
 describe("monthContribution", () => {
   it("adds expense to the total and its category", () => {
-    expect(monthContribution(t("expense", 300, "food"), 1)).toEqual({
+    expect(monthContribution(t("expense", 300, "food"), 1)).toEqual(contribution({
       income: 0,
       expense: 300,
       expenseByCategory: { food: 300 },
       incomeByCategory: {},
-    });
+    }));
   });
 
   it("adds income to the total and its category", () => {
-    expect(monthContribution(t("income", 5000, "salary"), 1)).toEqual({
+    expect(monthContribution(t("income", 5000, "salary"), 1)).toEqual(contribution({
       income: 5000,
       expense: 0,
       expenseByCategory: {},
       incomeByCategory: { salary: 5000 },
-    });
+    }));
   });
 
   it("ignores transfers (they are not income or expense)", () => {
@@ -32,21 +49,21 @@ describe("monthContribution", () => {
   });
 
   it("buckets a null category under UNCATEGORIZED", () => {
-    expect(monthContribution(t("expense", 100, null), 1)).toEqual({
+    expect(monthContribution(t("expense", 100, null), 1)).toEqual(contribution({
       income: 0,
       expense: 100,
       expenseByCategory: { [UNCATEGORIZED]: 100 },
       incomeByCategory: {},
-    });
+    }));
   });
 
   it("negates every field when reversing (sign -1)", () => {
-    expect(monthContribution(t("expense", 300, "food"), -1)).toEqual({
+    expect(monthContribution(t("expense", 300, "food"), -1)).toEqual(contribution({
       income: 0,
       expense: -300,
       expenseByCategory: { food: -300 },
       incomeByCategory: {},
-    });
+    }));
   });
 });
 
@@ -56,12 +73,12 @@ describe("addContribution", () => {
     addContribution(acc, "2026-07", monthContribution(t("expense", 300, "food"), 1));
     addContribution(acc, "2026-07", monthContribution(t("expense", 200, "food"), 1));
     addContribution(acc, "2026-07", monthContribution(t("expense", 50, "transport"), 1));
-    expect(acc.get("2026-07")).toEqual({
+    expect(acc.get("2026-07")).toEqual(contribution({
       income: 0,
       expense: 550,
       expenseByCategory: { food: 500, transport: 50 },
       incomeByCategory: {},
-    });
+    }));
   });
 
   it("keeps months separate and skips nulls", () => {
@@ -78,12 +95,12 @@ describe("addContribution", () => {
     const acc = new Map<string, RollupContribution>();
     addContribution(acc, "2026-07", monthContribution(t("expense", 300, "food"), 1));
     addContribution(acc, "2026-07", monthContribution(t("expense", 300, "food"), -1));
-    expect(acc.get("2026-07")).toEqual({
+    expect(acc.get("2026-07")).toEqual(contribution({
       income: 0,
       expense: 0,
       expenseByCategory: { food: 0 },
       incomeByCategory: {},
-    });
+    }));
   });
 });
 
@@ -98,11 +115,70 @@ describe("rollupsFrom", () => {
     ]);
     expect(rollups.get("2026-07")).toEqual({
       yearMonth: "2026-07",
-      income: 5000,
-      expense: 420,
-      expenseByCategory: { food: 420 },
-      incomeByCategory: { salary: 5000 },
+      ...contribution({
+        income: 5000,
+        expense: 420,
+        expenseByCategory: { food: 420 },
+        incomeByCategory: { salary: 5000 },
+      }),
     });
     expect(rollups.get("2026-06")?.expense).toBe(80);
+  });
+});
+
+describe("Projects as a breakdown dimension", () => {
+  const p = (type: EventType, baseAmount: number, categoryId: string | null, projectId: string | null) => ({
+    type,
+    baseAmount,
+    categoryId,
+    projectId,
+  });
+
+  it("buckets an expense under its Project as well as its Category", () => {
+    expect(monthContribution(p("expense", 300, "food", "tokyo"), 1)).toEqual(
+      contribution({
+        expense: 300,
+        expenseByCategory: { food: 300 },
+        expenseByProject: { tokyo: 300 },
+      }),
+    );
+  });
+
+  it("leaves the Project maps empty for everyday spending — no sentinel key", () => {
+    expect(monthContribution(p("expense", 300, "food", null), 1)).toEqual(
+      contribution({ expense: 300, expenseByCategory: { food: 300 } }),
+    );
+  });
+
+  it("excludes transfers from the Project maps too", () => {
+    expect(monthContribution(p("transfer", 20000, null, "tokyo"), 1)).toBeNull();
+  });
+
+  it("rebuilding from events reproduces the same per-Project totals", () => {
+    const rollups = rollupsFrom([
+      { ...p("expense", 300, "food", "tokyo"), yearMonth: "2026-07" },
+      { ...p("expense", 120, "fun", "tokyo"), yearMonth: "2026-07" },
+      { ...p("expense", 500, "food", null), yearMonth: "2026-07" },
+      { ...p("income", 800, "refund", "tokyo"), yearMonth: "2026-07" },
+      { ...p("transfer", 20000, null, "tokyo"), yearMonth: "2026-07" },
+    ]);
+    const jul = rollups.get("2026-07")!;
+    expect(jul.expenseByProject).toEqual({ tokyo: 420 });
+    expect(jul.incomeByProject).toEqual({ tokyo: 800 });
+    expect(jul.expense).toBe(920);
+  });
+
+  it("derives everyday spending by subtraction, so it cannot disagree with the total", () => {
+    const jul = rollupsFrom([
+      { ...p("expense", 300, "food", "tokyo"), yearMonth: "2026-07" },
+      { ...p("expense", 120, "fun", "reno"), yearMonth: "2026-07" },
+      { ...p("expense", 500, "food", null), yearMonth: "2026-07" },
+      { ...p("income", 800, "refund", "tokyo"), yearMonth: "2026-07" },
+      { ...p("income", 5000, "salary", null), yearMonth: "2026-07" },
+    ]).get("2026-07")!;
+    expect(everydayExpense(jul)).toBe(500);
+    expect(everydayIncome(jul)).toBe(5000);
+    // The parts always add back up to the headline figure.
+    expect(everydayExpense(jul) + 300 + 120).toBe(jul.expense);
   });
 });

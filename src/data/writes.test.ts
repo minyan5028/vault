@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   planAddEvent,
+  planSetAutoAssign,
   planBuy,
   planRemoveHolding,
   planRestoreEvent,
@@ -34,6 +35,7 @@ const newExpense = (over: Partial<NewTransactionInput> = {}): NewTransactionInpu
   fxRate: 1,
   date: JUL,
   categoryId: "food",
+  projectId: null,
   accountId: "cash",
   toAccountId: null,
   title: "lunch",
@@ -95,6 +97,7 @@ describe("planAddEvent", () => {
       date: at(JUL),
       yearMonth: "2026-07",
       categoryId: "food",
+      projectId: null,
       accountId: "cash",
       toAccountId: null,
       title: "lunch",
@@ -360,5 +363,132 @@ describe("planSnapshot", () => {
   it("leaves holdings outside the entries untouched", () => {
     const { ops } = planSnapshot(L, { date: "2026-07-31", entries: {}, fx: {} }, JUL);
     expect(ops.filter((o) => o.kind === "update")).toHaveLength(0);
+  });
+});
+
+describe("planSetAutoAssign", () => {
+  const projectPath = (id: string) => ["ledgers", L, "projects", id];
+  const projects = [
+    { id: "tokyo", autoAssign: false },
+    { id: "reno", autoAssign: true },
+    { id: "wedding", autoAssign: false },
+  ];
+
+  it("turns the chosen project on and the previously-on project off, in one plan", () => {
+    const { ops } = planSetAutoAssign(L, projects, "tokyo", true);
+    expect(ops).toEqual([
+      { kind: "update", path: projectPath("reno"), data: { autoAssign: false, updatedAt: serverTime } },
+      { kind: "update", path: projectPath("tokyo"), data: { autoAssign: true, updatedAt: serverTime } },
+    ]);
+  });
+
+  it("touches only the named project when nothing else was auto-assigning", () => {
+    const none = projects.map((p) => ({ ...p, autoAssign: false }));
+    const { ops } = planSetAutoAssign(L, none, "tokyo", true);
+    expect(ops).toEqual([
+      { kind: "update", path: projectPath("tokyo"), data: { autoAssign: true, updatedAt: serverTime } },
+    ]);
+  });
+
+  it("turning one off leaves every other project alone", () => {
+    const { ops } = planSetAutoAssign(L, projects, "reno", false);
+    expect(ops).toEqual([
+      { kind: "update", path: projectPath("reno"), data: { autoAssign: false, updatedAt: serverTime } },
+    ]);
+  });
+
+  it("never leaves two projects auto-assigning, even from an inconsistent start", () => {
+    const broken = [
+      { id: "tokyo", autoAssign: true },
+      { id: "reno", autoAssign: true },
+    ];
+    const { ops } = planSetAutoAssign(L, broken, "wedding", true);
+    const left = ops.filter((o) => o.kind === "update" && o.data.autoAssign === true);
+    expect(left).toHaveLength(1);
+    expect(left[0].path).toEqual(projectPath("wedding"));
+  });
+});
+
+describe("a Financial Event carrying a Project", () => {
+  const monthData = (ops: readonly { kind: string; path: readonly string[]; data?: unknown }[], ym: string) =>
+    ops.find((o) => o.path.join("/") === rollupPath(ym).join("/"))?.data as Record<string, unknown>;
+
+  it("adds an expense to its Project's expense total", () => {
+    const { ops } = planAddEvent(L, "tx-1", newExpense({ projectId: "tokyo" }));
+    expect(monthData(ops, "2026-07")).toMatchObject({
+      expense: inc(300),
+      expenseByCategory: { food: inc(300) },
+      expenseByProject: { tokyo: inc(300) },
+    });
+  });
+
+  it("adds an income to its Project's income total, kept apart from expense", () => {
+    const { ops } = planAddEvent(
+      L,
+      "tx-1",
+      newExpense({ type: "income", categoryId: "refund", projectId: "wedding" }),
+    );
+    const d = monthData(ops, "2026-07");
+    expect(d).toMatchObject({ income: inc(300), incomeByProject: { wedding: inc(300) } });
+    expect(d).not.toHaveProperty("expenseByProject");
+  });
+
+  it("adds a transfer to no total at all — buying foreign cash is not spending it", () => {
+    const { ops } = planAddEvent(
+      L,
+      "tx-1",
+      newExpense({ type: "transfer", categoryId: null, toAccountId: "jpy", projectId: "tokyo" }),
+    );
+    expect(monthData(ops, "2026-07")).toBeUndefined();
+  });
+
+  it("writes no Project key for everyday spending", () => {
+    const { ops } = planAddEvent(L, "tx-1", newExpense());
+    expect(monthData(ops, "2026-07")).not.toHaveProperty("expenseByProject");
+  });
+
+  it("stores projectId on the event document", () => {
+    const { ops } = planAddEvent(L, "tx-1", newExpense({ projectId: "tokyo" }));
+    const doc = ops.find((o) => o.path.join("/").endsWith("transactions/tx-1"))!;
+    expect((doc as { data: Record<string, unknown> }).data.projectId).toBe("tokyo");
+  });
+
+  it("attaches a Project to an event recorded earlier", () => {
+    const { ops } = planUpdateEvent(L, "tx-1", storedExpense(), { projectId: "tokyo" }, { deleted: false });
+    expect(monthData(ops, "2026-07")).toMatchObject({ expenseByProject: { tokyo: inc(300) } });
+  });
+
+  it("detaches a Project — a change that moves no money is still a change", () => {
+    // The amount and the category are identical on both sides, so the only
+    // thing moving is the Project. If the zero-check misses the Project maps
+    // this plan comes back with no rollup write at all and the figure silently
+    // keeps its old value.
+    const { ops } = planUpdateEvent(L, "tx-1", storedExpense({ projectId: "tokyo" }), { projectId: null }, { deleted: false });
+    expect(monthData(ops, "2026-07")).toMatchObject({ expenseByProject: { tokyo: inc(-300) } });
+  });
+
+  it("moves both breakdowns when an edit changes Category and Project together", () => {
+    const { ops } = planUpdateEvent(L, "tx-1", storedExpense({ projectId: "tokyo" }),
+      { categoryId: "travel", projectId: "wedding" },
+      { deleted: false },
+    );
+    expect(monthData(ops, "2026-07")).toMatchObject({
+      expenseByCategory: { food: inc(-300), travel: inc(300) },
+      expenseByProject: { tokyo: inc(-300), wedding: inc(300) },
+    });
+  });
+
+  it("splits across two months when a Project event moves over a boundary", () => {
+    const { ops } = planUpdateEvent(L, "tx-1", storedExpense({ projectId: "tokyo" }),
+      { date: AUG },
+      { deleted: false },
+    );
+    expect(monthData(ops, "2026-07")).toMatchObject({ expenseByProject: { tokyo: inc(-300) } });
+    expect(monthData(ops, "2026-08")).toMatchObject({ expenseByProject: { tokyo: inc(300) } });
+  });
+
+  it("reverses the Project total when the event is soft-deleted", () => {
+    const { ops } = planSoftDeleteEvent(L, "tx-1", storedExpense({ projectId: "tokyo" }));
+    expect(monthData(ops, "2026-07")).toMatchObject({ expenseByProject: { tokyo: inc(-300) } });
   });
 });

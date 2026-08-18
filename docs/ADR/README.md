@@ -12,6 +12,9 @@ change a decision, add a new ADR that supersedes the old one.
 | [0004](0004-soft-delete.md) | Soft delete instead of hard delete | Accepted |
 | [0005](0005-financial-event-source-of-truth.md) | Financial Event as the single source of truth | Accepted |
 | [0006](0006-i18n-from-day-one.md) | Internationalization (and unit testing) from day one | Accepted |
+| [0007](0007-multi-currency-accounts.md) | Multi-currency accounts | Accepted |
+| [0008](0008-expense-taxonomy-by-compressibility.md) | Expense taxonomy organized by compressibility | Accepted |
+| [0009](0009-projects-as-second-axis.md) | Projects as a second classification axis | Accepted |
 
 Template for each record: **Status · Context · Decision · Consequences · Rationale**.
 

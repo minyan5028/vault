@@ -143,6 +143,23 @@ per-account flow for the Assets page. Repair: `scripts/recompute_balances.mjs`.
 | expense          | number | Sum of expense `baseAmount`                  |
 | expenseByCategory| map    | categoryId → minor units (`uncategorized` if null) |
 | incomeByCategory | map    | categoryId → minor units                     |
+| expenseByProject | map    | projectId → minor units; **sparse**          |
+| incomeByProject  | map    | projectId → minor units; **sparse**          |
+
+The project maps are **sparse: a transaction with no project contributes no key
+at all.** `UNCATEGORIZED` exists because the category map is fanned out into a
+donut where every slice needs a key; these are an exception list, typically
+holding zero to two entries a month. Everyday spending is therefore a
+subtraction — `expense − Σ expenseByProject` — which is what stops it ever
+disagreeing with the headline total.
+
+The set of breakdown maps is declared once, as `BREAKDOWNS` in
+`domain/types.ts`. Every fold over them — accumulating, summing months, deciding
+whether a change is worth writing, turning one into increments — iterates that
+list rather than naming each map, so a new dimension cannot be added to half the
+pipeline. That matters most for the zero-check: an edit that only moves a
+transaction between projects changes neither amount nor category, and a map
+missing from the check would make a real change look like no change at all.
 
 Transfers are excluded (they move money between accounts, not income/expense).
 An edit that crosses a month boundary decrements the old month and increments
@@ -193,6 +210,41 @@ Deleting or archiving a category must never remove historical data.
 
 ---
 
+## projects/{projectId}
+
+A **Project** — a bounded, non-daily episode of spending that spans several
+categories (SPEC.md, ADR-0009). The second classification axis: a category says
+what kind of money an event is, a project says which episode it belonged to.
+
+A project holds no money. It has no balance, is never an endpoint, and never
+enters net worth.
+
+| Field      | Type      | Description                                          |
+| ---------- | --------- | ---------------------------------------------------- |
+| name       | string    | User-defined                                         |
+| startDate  | timestamp | Display, and the range a backfill would use          |
+| endDate    | timestamp | **Mandatory.** Extendable, never absent              |
+| autoAssign | boolean   | Stamp new manual entries; at most one per ledger     |
+| deletedAt  | timestamp \| null | Soft delete (ADR-0004)                      |
+| createdAt  | timestamp | Server timestamp                                     |
+| updatedAt  | timestamp | Server timestamp                                     |
+
+**Lifecycle is derived, never stored.** A project is in progress while today is
+on or before `endDate`, and ended afterwards — compared by calendar day, since
+`endDate` is stored at local midnight (`lib/project.ts`). There is no `status`
+field and no `archived` flag: a category needs `archived` because it has no end,
+a project has one.
+
+**At most one project per ledger may have `autoAssign` set.** Turning it on for
+one project turns it off for any other *in the same write* — see
+`planSetAutoAssign` in `data/writes.ts`, which is where the invariant is decided
+and unit-tested. An ended project never stamps, whatever the flag says.
+
+Deleting is soft, and transactions keep their `projectId`: history is not
+rewritten because the catalog changed, exactly as when a category is archived.
+
+---
+
 ## transactions/{transactionId}
 
 Represents a Financial Event.
@@ -209,6 +261,7 @@ Represents a Financial Event.
 | date         | timestamp        | When it happened                                 |
 | yearMonth    | string           | YYYY-MM                                          |
 | categoryId   | string | null    | Null for transfers                               |
+| projectId    | string | null    | The Project this event belongs to; null for everyday spending — the norm (ADR-0009) |
 | accountId    | string           | Source account                                   |
 | toAccountId  | string | null    | Destination account                              |
 | title        | string           | Primary description                              |
