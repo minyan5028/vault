@@ -24,7 +24,7 @@ test-guarded.
 
 **Blocked by:** 01 — Projects exist.
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] An expense carrying a Project adds to that Project's expense total for the
       month

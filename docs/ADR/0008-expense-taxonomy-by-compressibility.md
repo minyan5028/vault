@@ -177,3 +177,31 @@ Recorded here rather than as a new ADR because no decision is being reversed —
 the compressibility taxonomy is untouched, and a display field's ordering is not
 a decision an ADR exists to protect. Amended while drafting
 [ADR-0009](0009-projects-as-second-axis.md), which found the defect.
+
+---
+
+## Amendment 2026-08-18 — convenience stores are 外食, not 食材採買
+
+The migration routes grocery-chain titles out of 外食 into 食材採買 through one
+`CHAIN` regex, and that regex lumped 7-11 and 全家 in with Costco, 全聯 and
+家樂福. They are not the same purchase. Measured over the 38 months of history:
+237 rows, NT$23,022, averaging **NT$91 a row** — a drink and a rice ball, not a
+grocery run.
+
+The consequence was not cosmetic under this ADR's own axis. 外食 sits in
+可選消費 and 食材採買 in 必要變動, so every one of those rows was being counted
+as unavoidable spending, and the figure this ADR exists to make actionable —
+"外食 is N/mo" — was understated by NT$606/month.
+
+Restoring them is not a new judgement. These rows were filed under `Food` by the
+owner at the time and moved by the migration; putting them back is the original
+filing, which this ADR states is the trustworthy evidence.
+
+Applied by `scripts/move_convenience_to_dining.mjs` (dry-run by default),
+followed by `recompute_rollups.mjs`. Amounts, accounts and types are untouched
+and the expense total is asserted to be conserved. 全聯 / Costco / 家樂福 /
+美廉社 stay where the migration put them.
+
+**Revised monthly averages:** 食材採買 ≈ 8,200 (必要變動), 外食 ≈ 10,232
+(可選消費). The band shares in the table above shift by roughly 0.7 points from
+必要變動 to 可選消費.

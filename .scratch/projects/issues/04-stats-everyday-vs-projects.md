@@ -23,7 +23,7 @@ reads raw Financial Events, on demand, bounded to one Project's worth.
 
 **Blocked by:** 02 — A Financial Event can carry a Project.
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] The headline monthly total is unchanged by this feature
 - [ ] Everyday and Project figures are shown beneath it and sum to that total

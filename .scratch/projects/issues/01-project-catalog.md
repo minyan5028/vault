@@ -17,7 +17,7 @@ exist.
 
 **Blocked by:** None — can start immediately.
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] A Project cannot be saved without an end date
 - [ ] An end date can be extended at any time, including after it has passed

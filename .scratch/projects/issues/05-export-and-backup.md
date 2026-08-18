@@ -11,7 +11,7 @@ not just the references to it.
 
 **Blocked by:** 02 — A Financial Event can carry a Project.
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] The human-readable export carries a Project column showing the name
 - [ ] The column is empty for Financial Events with no Project

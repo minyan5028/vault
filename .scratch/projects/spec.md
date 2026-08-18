@@ -1,6 +1,6 @@
 # Projects — a second classification axis for Financial Events
 
-Status: ready-for-agent
+Status: resolved
 Spec for ADR-0009 (Projects as a second classification axis) and the ADR-0008
 `sortOrder` amendment that ships with it.
 

@@ -19,7 +19,7 @@ no Project look exactly as they do today, so everyday review gains no clutter.
 
 **Blocked by:** 02 — A Financial Event can carry a Project.
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] With an auto-assigning Project in progress, a new manual entry opens with it
       already selected
