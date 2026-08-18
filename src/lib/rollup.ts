@@ -101,6 +101,38 @@ export function everydayIncome(r: Pick<RollupContribution, "income" | "incomeByP
   return r.income - Object.values(r.incomeByProject).reduce((s, v) => s + v, 0);
 }
 
+/** What one Project accounted for over a period. */
+export interface ProjectTotal {
+  projectId: string;
+  expense: number;
+  income: number;
+  /** What the episode cost: expenses minus the income it brought back. A
+   *  wedding that took 200,000 in gifts and spent 350,000 cost 150,000. */
+  net: number;
+}
+
+/**
+ * Each Project's figures for a period, dearest first.
+ *
+ * Reads only the two Project maps, so a whole year's worth comes out of the
+ * rollups the Stats screen has already loaded — no transaction reads. Keys that
+ * cancelled to zero (a reversed edit leaves one behind) are dropped: they are
+ * not episodes, just residue.
+ */
+export function projectTotals(
+  r: Pick<RollupContribution, "expenseByProject" | "incomeByProject">,
+): ProjectTotal[] {
+  const ids = new Set([...Object.keys(r.expenseByProject), ...Object.keys(r.incomeByProject)]);
+  return [...ids]
+    .map((projectId) => {
+      const expense = r.expenseByProject[projectId] ?? 0;
+      const income = r.incomeByProject[projectId] ?? 0;
+      return { projectId, expense, income, net: expense - income };
+    })
+    .filter((p) => p.expense !== 0 || p.income !== 0)
+    .sort((a, b) => b.net - a.net);
+}
+
 /** Absolute rollups for a set of transactions, keyed by yearMonth. Used by the
  *  backfill to rebuild docs from scratch (deleted transactions excluded). */
 export function rollupsFrom(

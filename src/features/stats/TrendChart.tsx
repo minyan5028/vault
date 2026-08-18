@@ -3,6 +3,7 @@ import { formatMoney } from "../../lib/money";
 
 const EXPENSE = "#f43f5e"; // rose-500 — matches the app's expense semantics
 const INCOME = "#0ea5e9"; // sky-500 — matches the app's income semantics
+const PROJECT = "#f59e0b"; // amber-500 — a third identity, not a shade of expense
 const BASE_CURRENCY = "TWD";
 
 // Internal coordinate space; the SVG scales responsively to its container.
@@ -17,6 +18,8 @@ export interface TrendPoint {
   ym: string;
   expense: number;
   income: number;
+  /** Expense minus what the Projects accounted for (ADR-0009). */
+  everyday: number;
 }
 
 /**
@@ -25,6 +28,12 @@ export interface TrendPoint {
  * semantics. The selected month is emphasized and directly labelled; tapping a
  * month is emphasized and directly labelled. Legend + labels give identity
  * beyond color (accessibility). Read-only — navigate months with the header.
+ *
+ * When any month carries Project spending, a third band appears: the everyday
+ * line runs below the expense line and the gap between them is shaded. The
+ * expense line itself never moves — the total is the total — so a travel
+ * month's spike is *explained* rather than flattened away, which is the whole
+ * point of separating the two (ADR-0009).
  */
 export function TrendChart({
   points,
@@ -40,8 +49,18 @@ export function TrendChart({
   const max = Math.max(1, ...points.flatMap((p) => [p.expense, p.income]));
   const x = (i: number) => (n <= 1 ? (L + R) / 2 : L + (i / (n - 1)) * (R - L));
   const y = (v: number) => BOT - (v / max) * (BOT - TOP);
-  const line = (key: "expense" | "income") =>
+  const line = (key: "expense" | "income" | "everyday") =>
     points.map((p, i) => `${x(i)},${y(p[key])}`).join(" ");
+  // Only worth the extra ink when there is Project spending to explain.
+  const hasProjects = points.some((p) => p.expense !== p.everyday);
+  // The shaded gap: down the expense line, back along the everyday line.
+  const band =
+    line("expense") +
+    " " +
+    points
+      .map((_, i) => n - 1 - i)
+      .map((j) => `${x(j)},${y(points[j].everyday)}`)
+      .join(" ");
 
   const selIdx = points.findIndex((p) => p.ym === selected);
   const sel = selIdx >= 0 ? points[selIdx] : null;
@@ -59,11 +78,32 @@ export function TrendChart({
           <span className="h-2 w-2 rounded-full" style={{ background: INCOME }} />
           {t("income")}
         </span>
+        {hasProjects && (
+          <span className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full" style={{ background: PROJECT }} />
+            {t("projects")}
+          </span>
+        )}
       </figcaption>
 
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label={t("trend")}>
         {/* recessive baseline */}
         <line x1={L} y1={BOT} x2={R} y2={BOT} stroke="#1e293b" strokeWidth={1} />
+
+        {hasProjects && (
+          <>
+            <polygon points={band} fill={PROJECT} fillOpacity={0.22} />
+            <polyline
+              points={line("everyday")}
+              fill="none"
+              stroke={EXPENSE}
+              strokeWidth={1.5}
+              strokeDasharray="3 3"
+              strokeLinejoin="round"
+              strokeLinecap="round"
+            />
+          </>
+        )}
 
         <polyline
           points={line("income")}

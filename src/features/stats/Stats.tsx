@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { yearMonthOf, shiftMonth, monthLabel } from "../../lib/date";
+import { formatMoney } from "../../lib/money";
 import { useRollups } from "../../data/useRollups";
 import { useTransactionsForMonths } from "../../data/useTransactionsForMonths";
-import { sumRollups } from "../../lib/rollup";
+import { sumRollups, everydayExpense, everydayIncome, projectTotals } from "../../lib/rollup";
 import type { LedgerEndpoint } from "../../lib/endpoints";
 import {
   UNCATEGORIZED,
@@ -17,11 +18,12 @@ import { TrendChart, type TrendPoint } from "./TrendChart";
 import { SLICE_COLORS, OTHER_COLOR, type Slice } from "./donutPalette";
 import { CategoryBreakdown } from "./CategoryBreakdown";
 import { ContentList } from "./ContentList";
+import { ProjectList } from "./ProjectList";
 import { DrillView } from "./DrillView";
 import { AppLogo } from "../../components/AppLogo";
 
 type Period = "month" | "year";
-type View = "category" | "trend" | "content";
+type View = "category" | "trend" | "content" | "project";
 type Mode = "expense" | "income";
 
 /**
@@ -52,6 +54,14 @@ export function Stats({
   const [view, setView] = useState<View>("category");
   // A tapped category / title row drills into its transactions for the period.
   const [drill, setDrill] = useState<{ kind: "category" | "title"; key: string; label: string } | null>(null);
+  // A tapped Project row opens that Project's own category breakdown, one level
+  // above `drill` — so backing out of a category returns to the Project.
+  const [openProject, setOpenProject] = useState<string | null>(null);
+  const [openLabel, setOpenLabel] = useState("");
+  // Everyday-only is a deliberate action, never the default: hiding a trip by
+  // default would make the owner systematically underestimate their own
+  // spending, which is the inverse of the problem Projects exist to solve.
+  const [everydayOnly, setEverydayOnly] = useState(false);
   // Income vs expense drives the category donut and the by-title list (each is
   // one total broken apart); the trend chart always shows both.
   const [mode, setMode] = useState<Mode>("expense");
@@ -90,9 +100,15 @@ export function Stats({
     [rollups, inPeriod],
   );
 
+  // The headline never moves; the split is shown beneath it and adds back up.
+  const everydayTotal =
+    mode === "expense" ? everydayExpense(agg) : everydayIncome(agg);
+  const periodProjects = useMemo(() => projectTotals(agg), [agg]);
+  const projectTotal = (mode === "expense" ? agg.expense : agg.income) - everydayTotal;
+
   const modeTotal = mode === "expense" ? agg.expense : agg.income;
   const catMap = mode === "expense" ? agg.expenseByCategory : agg.incomeByCategory;
-  const rows = useMemo(
+  const rollupRows = useMemo(
     () =>
       Object.entries(catMap)
         .filter(([, v]) => v > 0)
@@ -101,6 +117,62 @@ export function Stats({
     [catMap],
   );
 
+  const trend: TrendPoint[] = useMemo(
+    () =>
+      months.map((ym) => {
+        const r = byMonth.get(ym);
+        return {
+          ym,
+          expense: r?.expense ?? 0,
+          income: r?.income ?? 0,
+          everyday: r ? everydayExpense(r) : 0,
+        };
+      }),
+    [months, byMonth],
+  );
+
+  // Raw transactions for the period — needed by the by-title breakdown and any
+  // drill-down (titles/rows aren't in the rollups). Loaded only when in use.
+  // The rollups carry no category×project cross-tab, so scoping the breakdown
+  // to everyday-only or to one Project is the one thing here that cannot come
+  // out of them. Those two views therefore read the period's transactions, on
+  // demand and bounded — the same bargain the by-title view already makes.
+  // Only the category breakdown consumes a scoped recomputation, so only it
+  // should pay for the transaction read. The trend chart and the Project list
+  // are answered entirely by the rollups; subscribing to a year of raw
+  // transactions to render either would be a read for nothing. Everyday-only is
+  // also a no-op in a period with no Project spending — everyday is the total —
+  // so it must not survive navigating there and cost a read either.
+  const showsBreakdown = view === "category" || (view === "project" && openProject !== null);
+  const scoped =
+    showsBreakdown && ((everydayOnly && projectTotal !== 0) || openProject !== null);
+  const periodTx = useTransactionsForMonths(
+    ledgerId,
+    view === "content" || drill || scoped ? periodMonths : [],
+  );
+
+  /** True when a transaction belongs to whatever the screen is scoped to. */
+  const inScope = useMemo(() => {
+    if (openProject !== null) return (tx: Transaction) => tx.projectId === openProject;
+    if (everydayOnly) return (tx: Transaction) => tx.projectId === null;
+    return () => true;
+  }, [openProject, everydayOnly]);
+
+  const scopedRows = useMemo(() => {
+    if (!scoped) return null;
+    const m = new Map<string, number>();
+    for (const tx of periodTx) {
+      if (tx.type !== mode || !inScope(tx)) continue;
+      const key = tx.categoryId ?? UNCATEGORIZED;
+      m.set(key, (m.get(key) ?? 0) + tx.baseAmount);
+    }
+    return [...m.entries()]
+      .filter(([, v]) => v > 0)
+      .map(([id, amount]) => ({ id, amount }))
+      .sort((a, b) => b.amount - a.amount);
+  }, [scoped, periodTx, mode, inScope]);
+
+  const rows = scopedRows ?? rollupRows;
   // Donut slices: the top 6 categories keep distinct colors; the rest fold into
   // one neutral "Other" slice (dataviz: never cycle a categorical palette).
   const donut: Slice[] = useMemo(() => {
@@ -109,26 +181,26 @@ export function Stats({
     return rest > 0 ? [...top, { label: UNCATEGORIZED, value: rest, color: OTHER_COLOR }] : top;
   }, [rows]);
 
-  const trend: TrendPoint[] = useMemo(
-    () =>
-      months.map((ym) => ({
-        ym,
-        expense: byMonth.get(ym)?.expense ?? 0,
-        income: byMonth.get(ym)?.income ?? 0,
-      })),
-    [months, byMonth],
-  );
-
-  // Raw transactions for the period — needed by the by-title breakdown and any
-  // drill-down (titles/rows aren't in the rollups). Loaded only when in use.
-  const periodTx = useTransactionsForMonths(
-    ledgerId,
-    view === "content" || drill ? periodMonths : [],
-  );
+  // A Project stays open across a period change — navigating month by month
+  // through a trip is the point — so a period it has no spending in must show
+  // zero, not fall back to the period's whole figure under the Project's name.
+  const openProjectTotal = periodProjects.find((p) => p.projectId === openProject);
+  const breakdownTotal =
+    openProject !== null
+      ? openProjectTotal === undefined
+        ? 0
+        : mode === "expense"
+          ? openProjectTotal.expense
+          : openProjectTotal.income
+      : everydayOnly
+        ? everydayTotal
+        : modeTotal;
   const contentRows = useMemo(() => {
     const m = new Map<string, { total: number; count: number }>();
     for (const tx of periodTx) {
-      if (tx.type !== mode) continue;
+      // Must honour the same scope as the drill behind each row, or a row reads
+      // 5,000 and opening it lists 2,000.
+      if (tx.type !== mode || !inScope(tx)) continue;
       const key = tx.title.trim() || "—";
       const cur = m.get(key) ?? { total: 0, count: 0 };
       cur.total += tx.baseAmount;
@@ -138,21 +210,26 @@ export function Stats({
     return [...m.entries()]
       .map(([title, v]) => ({ title, ...v }))
       .sort((a, b) => b.total - a.total);
-  }, [periodTx, mode]);
+  }, [periodTx, mode, inScope]);
 
   // Transactions behind the drilled-into category or title (period + mode).
   const drillTx = useMemo(() => {
     if (!drill) return [];
     return periodTx.filter((tx) => {
       if (tx.type !== mode) return false;
+      if (!inScope(tx)) return false;
       return drill.kind === "category"
         ? (tx.categoryId ?? UNCATEGORIZED) === drill.key
         : (tx.title.trim() || "—") === drill.key;
     });
-  }, [periodTx, drill, mode]);
+  }, [periodTx, drill, mode, inScope]);
 
   // Close a drill-down if the context it was opened in changes.
-  useEffect(() => setDrill(null), [period, mode, anchor, view]);
+  useEffect(() => setDrill(null), [period, mode, anchor, view, openProject, everydayOnly]);
+  // Leaving the Project view closes the Project being reviewed.
+  useEffect(() => {
+    if (view !== "project") setOpenProject(null);
+  }, [view]);
 
   const shift = (d: number) => setAnchor((a) => shiftMonth(a, period === "year" ? d * 12 : d));
   const heading = period === "year" ? anchor.slice(0, 4) : monthLabel(anchor, locale);
@@ -220,16 +297,80 @@ export function Stats({
           <StatCell label={t("net")} minor={agg.income - agg.expense} />
         </div>
 
+        {/* The split. The headline above never moves — these two add back up to
+            it — so the owner is never misled about what they actually spent,
+            while a travel month becomes comparable to one without a trip. */}
+        {projectTotal !== 0 && (
+          <div className="mt-2 flex items-center justify-between gap-2 text-xs">
+            <div className="flex items-center gap-3 tabular-nums text-slate-400">
+              <span>
+                {t("everyday")}{" "}
+                <span className="text-slate-200">{formatMoney(everydayTotal, "TWD", locale)}</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setView("project")}
+                className="flex items-center gap-1.5"
+              >
+                <span className="h-2 w-2 rounded-full bg-amber-500" />
+                {t("projects")}{" "}
+                <span className="text-slate-200">{formatMoney(projectTotal, "TWD", locale)}</span>
+              </button>
+            </div>
+            <Pill active={everydayOnly} onClick={() => setEverydayOnly((v) => !v)}>
+              {t("everydayOnly")}
+            </Pill>
+          </div>
+        )}
+
         {/* view sub-tabs */}
         <div className="mt-3 flex gap-2 text-xs">
-          {(["category", "trend", "content"] as View[]).map((v) => (
+          {(["category", "trend", "content", "project"] as View[]).map((v) => (
             <Pill key={v} active={view === v} onClick={() => setView(v)}>
-              {t(v === "category" ? "byCategory" : v === "trend" ? "trend" : "byContent")}
+              {t(
+                v === "category"
+                  ? "byCategory"
+                  : v === "trend"
+                    ? "trend"
+                    : v === "content"
+                      ? "byContent"
+                      : "projects",
+              )}
             </Pill>
           ))}
         </div>
 
-        {view === "trend" ? (
+        {view === "project" ? (
+          openProject === null ? (
+            <ProjectList
+              totals={periodProjects}
+              projects={projects}
+              locale={locale}
+              onOpen={(id, label) => {
+                setOpenProject(id);
+                setOpenLabel(label);
+              }}
+            />
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => setOpenProject(null)}
+                className="mt-3 flex items-center gap-1 text-xs text-slate-400"
+              >
+                ‹ {openLabel}
+              </button>
+              <CategoryBreakdown
+                rows={rows}
+                donut={donut}
+                total={breakdownTotal}
+                categories={categories}
+                locale={locale}
+                onDrill={(key, label) => setDrill({ kind: "category", key, label })}
+              />
+            </>
+          )
+        ) : view === "trend" ? (
           <TrendChart points={trend} selected={anchor} locale={locale} />
         ) : view === "content" ? (
           <ContentList
@@ -241,7 +382,7 @@ export function Stats({
           <CategoryBreakdown
             rows={rows}
             donut={donut}
-            total={modeTotal}
+            total={breakdownTotal}
             categories={categories}
             locale={locale}
             onDrill={(key, label) => setDrill({ kind: "category", key, label })}

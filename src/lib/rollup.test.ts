@@ -5,6 +5,7 @@ import {
   rollupsFrom,
   everydayExpense,
   everydayIncome,
+  projectTotals,
   type RollupContribution,
 } from "./rollup";
 import { UNCATEGORIZED, emptyBreakdowns, type EventType } from "../domain/types";
@@ -180,5 +181,46 @@ describe("Projects as a breakdown dimension", () => {
     expect(everydayIncome(jul)).toBe(5000);
     // The parts always add back up to the headline figure.
     expect(everydayExpense(jul) + 300 + 120).toBe(jul.expense);
+  });
+});
+
+describe("projectTotals", () => {
+  const agg = (over: Partial<RollupContribution>) => contribution(over);
+
+  it("reports each Project's cost net of the income it brought back", () => {
+    // A wedding that took 200,000 in gifts and spent 350,000 cost 150,000.
+    expect(
+      projectTotals(
+        agg({
+          expenseByProject: { wedding: 350000, tokyo: 68432 },
+          incomeByProject: { wedding: 200000 },
+        }),
+      ),
+    ).toEqual([
+      { projectId: "wedding", expense: 350000, income: 200000, net: 150000 },
+      { projectId: "tokyo", expense: 68432, income: 0, net: 68432 },
+    ]);
+  });
+
+  it("sorts by net cost, so the expensive episode is not buried", () => {
+    const rows = projectTotals(
+      agg({ expenseByProject: { a: 100, b: 900, c: 500 } }),
+    );
+    expect(rows.map((r) => r.projectId)).toEqual(["b", "c", "a"]);
+  });
+
+  it("includes a Project that only brought income in, as a negative net", () => {
+    expect(projectTotals(agg({ incomeByProject: { refunded: 800 } }))).toEqual([
+      { projectId: "refunded", expense: 0, income: 800, net: -800 },
+    ]);
+  });
+
+  it("is empty when nothing was attributed to a Project", () => {
+    expect(projectTotals(agg({ expense: 5000, expenseByCategory: { food: 5000 } }))).toEqual([]);
+  });
+
+  it("drops a Project whose figures cancelled out to nothing", () => {
+    // A reversed edit can leave a zero key behind; it is not a real episode.
+    expect(projectTotals(agg({ expenseByProject: { gone: 0 } }))).toEqual([]);
   });
 });
