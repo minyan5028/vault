@@ -300,7 +300,12 @@ describe("planBuy / planSell", () => {
     expect(ops[0]).toEqual({
       kind: "update",
       path: ["ledgers", L, "holdings", "hold-1"],
-      data: { cost: 113_000, realizedGain: 0, shares: inc(10_0000) },
+      data: {
+        cost: 113_000,
+        realizedGain: 0,
+        buyDate: at(new Date(2026, 0, 5)),
+        shares: inc(10_0000),
+      },
     });
     expect(ops[1]).toMatchObject({ path: ["ledgers", L, "holdings", "hold-1", "trades", "trade-1"] });
     // A new trade is also a price observation for its day.
@@ -777,6 +782,72 @@ describe("planEditTrade / planDeleteTrade", () => {
     );
     if (r.ok) throw new Error("expected a refusal");
     expect(r.blockedBy.id).toBe("t-sell");
+  });
+
+  describe("the purchase date is the log's, not a second copy", () => {
+    it("follows a correction to the opening buy's date", () => {
+      const ops = ok(
+        planEditTrade(
+          L,
+          H,
+          { trades: [openingBuy], latestSnapshot: null },
+          "t-buy",
+          { date: MAR },
+          buyLeg,
+        ),
+      );
+      expect(holdingOp(ops).buyDate).toEqual(at(MAR));
+    });
+
+    it("stays on the earliest buy when a later one is corrected", () => {
+      const later: Trade = { ...openingBuy, id: "t-buy-2", date: MAR };
+      const ops = ok(
+        planEditTrade(
+          L,
+          H,
+          { trades: [openingBuy, later], latestSnapshot: null },
+          "t-buy-2",
+          { amount: 5_000 },
+          null,
+        ),
+      );
+      expect(holdingOp(ops).buyDate).toEqual(at(JAN));
+    });
+
+    it("moves to the next surviving buy when the earliest is deleted", () => {
+      const later: Trade = { ...openingBuy, id: "t-buy-2", date: MAR };
+      const ops = ok(
+        planDeleteTrade(
+          L,
+          H,
+          { trades: [openingBuy, later], latestSnapshot: null },
+          "t-buy",
+          buyLeg,
+        ),
+      );
+      expect(holdingOp(ops).buyDate).toEqual(at(MAR));
+    });
+
+    it("is null when no buy survives", () => {
+      const ops = ok(
+        planDeleteTrade(L, H, { trades: [openingBuy], latestSnapshot: null }, "t-buy", buyLeg),
+      );
+      expect(holdingOp(ops).buyDate).toBeNull();
+    });
+
+    it("moves back when a new buy predates the opening one", () => {
+      const ops = ok(
+        planBuy(
+          L,
+          { id: H, ticker: "VT", currency: "TWD" },
+          { trades: [openingBuy], latestSnapshot: null },
+          { shares: 10_0000, price: 900, amount: 9_000, date: new Date(2025, 11, 1), cashAccountId: null },
+          "uid-1",
+          { tradeId: "t-new" },
+        ),
+      );
+      expect(holdingOp(ops).buyDate).toEqual(at(new Date(2025, 11, 1)));
+    });
   });
 
   it("reproduces an untouched holding's stored figures — the fold agrees with the increments", () => {

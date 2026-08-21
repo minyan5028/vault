@@ -10,6 +10,7 @@ import {
   dividendMetrics,
   estimatedDividends,
   replayTrades,
+  openingBuyDate,
 } from "./holdings";
 import type { HoldingClass, PortfolioSnapshot, Trade } from "../domain/types";
 
@@ -290,5 +291,38 @@ describe("replayTrades", () => {
 
   it("folds an empty log to an empty position", () => {
     expect(replayTrades([])).toMatchObject({ ok: true, tradedShares: 0, cost: 0, realizedGain: 0 });
+  });
+});
+
+describe("openingBuyDate", () => {
+  const buy = (id: string, date: Date, over: Partial<Trade> = {}): Trade => ({
+    id,
+    kind: "buy",
+    date,
+    shares: 10_0000,
+    price: 100,
+    amount: 1_000,
+    realized: 0,
+    ...over,
+  });
+  const JAN = new Date(2026, 0, 10);
+  const FEB = new Date(2026, 1, 10);
+
+  it("is the earliest surviving buy", () => {
+    expect(openingBuyDate([buy("b", FEB), buy("a", JAN)])).toEqual(JAN);
+  });
+
+  it("ignores sells — a position opens when it is bought", () => {
+    const sell: Trade = { ...buy("s", JAN), kind: "sell" };
+    expect(openingBuyDate([sell, buy("b", FEB)])).toEqual(FEB);
+  });
+
+  it("moves to the next buy when the earliest is soft-deleted", () => {
+    expect(openingBuyDate([buy("a", JAN, { deletedAt: FEB }), buy("b", FEB)])).toEqual(FEB);
+  });
+
+  it("is null when no buy survives", () => {
+    expect(openingBuyDate([buy("a", JAN, { deletedAt: FEB })])).toBeNull();
+    expect(openingBuyDate([])).toBeNull();
   });
 });

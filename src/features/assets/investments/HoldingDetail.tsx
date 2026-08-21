@@ -303,8 +303,15 @@ export function HoldingDetail({
   );
 }
 
-/** Edit a holding's descriptive fields (not shares/cost/price — those come from
- *  trades), plus archive or delete it. Delete undoes the paired cash transfers. */
+/**
+ * Edit a holding's genuinely descriptive fields, plus archive or delete it.
+ * Delete undoes the paired cash transfers.
+ *
+ * Not shares, cost or price: those belong to the trades and the snapshots
+ * (ADR-0010). Not the purchase date either — it is the opening buy's date, and
+ * it is corrected in the trade log, which is where it actually lives. Editing a
+ * second copy here is what made a corrected date appear not to save.
+ */
 function EditHoldingForm({
   holding,
   onSave,
@@ -323,7 +330,6 @@ function EditHoldingForm({
   const [cls, setCls] = useState<HoldingClass>(holding.class);
   const [currency, setCurrency] = useState(holding.currency);
   const [target, setTarget] = useState(holding.targetPrice != null ? amountInput(holding.targetPrice) : "");
-  const [buyDate, setBuyDate] = useState(holding.buyDate ? toDateInputValue(holding.buyDate) : "");
   const [dividend, setDividend] = useState(
     holding.dividendReceived ? amountInput(holding.dividendReceived) : "",
   );
@@ -370,24 +376,14 @@ function EditHoldingForm({
           </select>
         </Field>
       </div>
-      <div className="flex gap-2">
-        <Field label={t("targetPrice")}>
-          <input
-            className={inputClass}
-            inputMode="decimal"
-            value={target}
-            onChange={(e) => setTarget(e.target.value)}
-          />
-        </Field>
-        <Field label={t("buyDate")}>
-          <input
-            type="date"
-            className={inputClass}
-            value={buyDate}
-            onChange={(e) => setBuyDate(e.target.value)}
-          />
-        </Field>
-      </div>
+      <Field label={t("targetPrice")}>
+        <input
+          className={inputClass}
+          inputMode="decimal"
+          value={target}
+          onChange={(e) => setTarget(e.target.value)}
+        />
+      </Field>
       {cls === "dividend" && (
         <div className="flex gap-2">
           <Field label={`${t("dividendReceived")} (${t("cumulative")})`}>
@@ -432,7 +428,6 @@ function EditHoldingForm({
               class: cls,
               currency: currency.trim() || "TWD",
               targetPrice: parseAmount(target),
-              buyDate: buyDate ? fromDateInputValue(buyDate) : null,
               dividendReceived: parseAmount(dividend) ?? 0,
               dividendPerShare: parseAmount(divPerShare) ?? 0,
             });

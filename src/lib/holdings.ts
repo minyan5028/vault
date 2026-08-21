@@ -333,3 +333,24 @@ export function replayTrades(trades: readonly Trade[]): ReplayResult {
     realizedByTrade,
   };
 }
+
+/**
+ * When the position was opened: the earliest surviving buy.
+ *
+ * `Holding.buyDate` caches this rather than being independently editable
+ * (ADR-0010). It was stored twice before — once here, once on the opening trade
+ * — and editing the holding's copy moved one and not the other, so a corrected
+ * purchase date appeared not to save. Cached and never independently written,
+ * one fact has one value.
+ *
+ * Null when no buy survives, which a holding sold out and then had its opening
+ * trade deleted can reach.
+ */
+export function openingBuyDate(trades: readonly Trade[]): Date | null {
+  let earliest: Date | null = null;
+  for (const t of trades) {
+    if (t.kind !== "buy" || t.deletedAt) continue;
+    if (!earliest || t.date.getTime() < earliest.getTime()) earliest = t.date;
+  }
+  return earliest;
+}

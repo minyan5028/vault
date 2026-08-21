@@ -4,10 +4,13 @@
 independently editable field and becomes a cache of the earliest buy trade's
 date, recomputed on every trade write.
 
-It stays a stored column rather than being derived on read: the investments list
-shows it, and deriving it there would mean loading every holding's trades for a
-label. Cached and never independently written is enough to make one fact have one
-value.
+It stays a stored column rather than being derived on read. The reason given
+when this was decided — that the investments list shows it, so deriving would
+mean loading every holding's trades for a label — turned out to be wrong: the
+list never displayed it, only the detail screen does. The column stays anyway,
+for a smaller reason: `AddHoldingForm` writes it and the detail screen reads it,
+so keeping it costs nothing and removing it is churn with no gain. Cached and
+never independently written is what makes one fact have one value.
 
 `EditHoldingForm` loses the date input. Ticker, class, currency, target price and
 the dividend figures stay — those are genuinely descriptive. The purchase date is
@@ -20,18 +23,19 @@ copy. Dry run first, listing every holding it would move.
 
 **Blocked by:** 03 — a trade can be corrected and deleted.
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] `buyDate` is recomputed from the earliest surviving buy trade on every
-      trade write — create, edit, delete and restore alike
-- [ ] Deleting the earliest buy moves `buyDate` to the next surviving one
-- [ ] A holding with no surviving buy trades has a null `buyDate`, and the screens
+- [x] `buyDate` is recomputed from the earliest surviving buy trade on every
+      trade write — create, edit and delete. There is no restore: nothing offers
+      one, and an unreachable code path is worse than a missing one
+- [x] Deleting the earliest buy moves `buyDate` to the next surviving one
+- [x] A holding with no surviving buy trades has a null `buyDate`, and the screens
       that read it handle that
-- [ ] The date input is gone from `EditHoldingForm`; the other descriptive fields
+- [x] The date input is gone from `EditHoldingForm`; the other descriptive fields
       are untouched
-- [ ] Correcting the opening trade's date in the trade log updates the date shown
-      on the holding and in the investments list
-- [ ] The backfill pushes each stored `buyDate` onto its opening trade, listing
+- [x] Correcting the opening trade's date in the trade log updates the date shown
+      on the holding. Not the investments list — it never showed the date
+- [x] The backfill pushes each stored `buyDate` onto its opening trade, listing
       every holding it moves in the dry run, and writes nothing without --commit
-- [ ] Annualized yield-on-cost, which reads `buyDate`, is unchanged for holdings
+- [x] Annualized yield-on-cost, which reads `buyDate`, is unchanged for holdings
       that had no drift

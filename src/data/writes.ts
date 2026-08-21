@@ -9,7 +9,7 @@
  * seam between: read → plan → execute.
  */
 import { yearMonthOf } from "../lib/date";
-import { replayTrades, type ReplayedPosition } from "../lib/holdings";
+import { openingBuyDate, replayTrades, type ReplayedPosition } from "../lib/holdings";
 import {
   combineEffects,
   ledgerEffect,
@@ -571,14 +571,23 @@ function heldSharesContribution(
  *
  * `price` and `pricedAt` are deliberately absent: they belong to the valuation
  * axis, and correcting a two-year-old trade must not move today's price.
+ *
+ * `buyDate` is written here too — a cache of the earliest surviving buy, so the
+ * date on the holding and the date in the log can never again disagree.
  */
 function planFold(
   ledgerId: string,
   holdingId: string,
+  log: readonly Trade[],
   fold: ReplayedPosition,
   sharesDelta: number,
 ): WritePlan {
-  const data: PlanData = { cost: fold.cost, realizedGain: fold.realizedGain };
+  const opened = openingBuyDate(log);
+  const data: PlanData = {
+    cost: fold.cost,
+    realizedGain: fold.realizedGain,
+    buyDate: opened ? atTime(opened) : null,
+  };
   if (sharesDelta !== 0) data.shares = incrementBy(sharesDelta);
   return { ops: [{ kind: "update", path: holdingPath(ledgerId, holdingId), data }] };
 }
@@ -646,7 +655,7 @@ function planAddTrade(
   return {
     ok: true,
     plan: concatPlans(
-      planFold(ledgerId, holding.id, fold, heldSharesContribution(added, ctx.latestSnapshot)),
+      planFold(ledgerId, holding.id, log, fold, heldSharesContribution(added, ctx.latestSnapshot)),
       {
         ops: [
           {
@@ -764,7 +773,7 @@ export function planEditTrade(
   return {
     ok: true,
     plan: concatPlans(
-      planFold(ledgerId, holdingId, fold, delta),
+      planFold(ledgerId, holdingId, log, fold, delta),
       {
         ops: [
           {
@@ -805,7 +814,7 @@ export function planDeleteTrade(
   return {
     ok: true,
     plan: concatPlans(
-      planFold(ledgerId, holdingId, fold, delta),
+      planFold(ledgerId, holdingId, log, fold, delta),
       {
         ops: [
           {
