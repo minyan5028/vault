@@ -158,5 +158,6 @@
   "namePlaceholder": "Name",
   "iconPlaceholder": "Icon",
   "signIn": "Sign in with Google",
-  "signOut": "Sign out"
+  "signOut": "Sign out",
+  "tradeRefused": "That would leave {{shares}} shares at the {{kind}} on {{date}}. Correct that trade first."
 }

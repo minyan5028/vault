@@ -217,7 +217,6 @@ head("檢核");
 log(`  ✓ 只寫 projectId：不動 amount / account / type / date / categoryId`);
 log(`  ✓ 支出總額必然不變 — 沒有任何金額欄位被寫入`);
 log(`  ✓ 收入只納入明確指名的（${Object.keys(INCOME).join(", ") || "無"}）`);
-log(`  ✓ 支出總額不受影響 (${money(before)})`);
 log(`  ✓ 沒有交易被兩個專案同時納入`);
 log(`  ✓ 重跑安全：已經指派過的會被跳過`);
 

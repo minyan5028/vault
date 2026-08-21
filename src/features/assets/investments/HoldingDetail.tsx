@@ -10,7 +10,13 @@ import {
   estimatedDividends,
   yieldOnCost,
 } from "../../../lib/holdings";
-import { holdingRepo, type NewHolding, type TradeInput } from "../../../data/holdingRepo";
+import {
+  holdingRepo,
+  type NewHolding,
+  type TradeContext,
+  type TradeOutcome,
+  type TradeInput,
+} from "../../../data/holdingRepo";
 import type {
   Account,
   Holding,
@@ -69,12 +75,37 @@ export function HoldingDetail({
     return holdingRepo.subscribeTrades(ledgerId, holding.id, setTrades);
   }, [ledgerId, holding.id]);
 
+  // The fold needs the log the trade joins and where the valuation axis has got
+  // to; both are already on screen, so a correction costs no extra read.
+  const latestSnapshot = snapshots.length
+    ? fromDateInputValue(snapshots[snapshots.length - 1].date)
+    : null;
+  const ctx: TradeContext = { trades, latestSnapshot };
+  const [refusal, setRefusal] = useState<string | null>(null);
+
   const now = Date.now();
   const dm = holding.class === "dividend" ? dividendMetrics(holding, v.valueCur, now) : null;
   // DRIP dividends reverse-derived from snapshot share growth (see the lib fn).
   const estDiv =
     holding.class === "dividend" ? estimatedDividends(holding.id, snapshots, trades) : 0;
   const estYield = yieldOnCost(estDiv, holding.cost, holding.buyDate, now);
+
+  /** Surface a refused trade write, and say whether the caller may proceed. */
+  const report = (outcome: TradeOutcome): boolean => {
+    if (outcome.ok) {
+      setRefusal(null);
+      return true;
+    }
+    const { blockedBy, remaining } = outcome;
+    setRefusal(
+      t("tradeRefused", {
+        shares: formatShares(remaining),
+        kind: blockedBy.kind === "buy" ? t("buyShort") : t("sellShort"),
+        date: blockedBy.date.toLocaleDateString(locale),
+      }),
+    );
+    return false;
+  };
 
   return (
     <main className="min-h-dvh bg-slate-900 text-slate-100">
@@ -201,6 +232,10 @@ export function HoldingDetail({
           </dl>
         )}
 
+        {refusal && (
+          <p className="mt-3 rounded-lg bg-rose-500/10 p-2 text-xs text-rose-300">{refusal}</p>
+        )}
+
         <div className="mt-3 flex gap-2 text-xs">
           <button
             type="button"
@@ -234,8 +269,11 @@ export function HoldingDetail({
             locale={locale}
             onCancel={() => setAction("none")}
             onSave={async (input) => {
-              if (action === "buy") await holdingRepo.buy(ledgerId, holding, input, uid);
-              else await holdingRepo.sell(ledgerId, holding, input, uid);
+              const outcome =
+                action === "buy"
+                  ? await holdingRepo.buy(ledgerId, holding, ctx, input, uid)
+                  : await holdingRepo.sell(ledgerId, holding, ctx, input, uid);
+              if (!report(outcome)) return;
               setAction("none");
             }}
           />

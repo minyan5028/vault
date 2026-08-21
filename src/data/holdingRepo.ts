@@ -31,22 +31,31 @@ import {
   holdingsPath,
   snapshotsPath,
   tradesPath,
+  transactionPath,
   transactionsPath,
 } from "./writePlan";
 import {
   planAddHolding,
   planBuy,
+  planDeleteTrade,
+  planEditTrade,
   planRemoveHolding,
   planSell,
   planSnapshot,
   type HoldingCashLeg,
   type NewHolding,
+  type TradeContext,
+  type TradeEdit,
   type TradeIds,
   type TradeInput,
+  type TradeWriteResult,
 } from "./writes";
 import { asStored } from "./transactionRepo";
 
-export type { NewHolding, TradeInput } from "./writes";
+export type { NewHolding, TradeContext, TradeEdit, TradeInput } from "./writes";
+
+/** What a trade write reports back: it happened, or it was refused and why. */
+export type TradeOutcome = Exclude<TradeWriteResult, { ok: true }> | { ok: true };
 
 const holdingsCol = (ledgerId: string) => collectionRef(holdingsPath(ledgerId));
 const tradesCol = (ledgerId: string, holdingId: string) =>
@@ -104,6 +113,29 @@ function toHolding(s: QueryDocumentSnapshot<DocumentData>): Holding {
 function toSnapshot(s: QueryDocumentSnapshot<DocumentData>): PortfolioSnapshot {
   const d = s.data();
   return { date: d.date ?? s.id, entries: d.entries ?? {}, fx: d.fx ?? {} };
+}
+
+/** Commit a planned trade write, or pass the refusal back untouched. */
+async function commitTrade(result: TradeWriteResult): Promise<TradeOutcome> {
+  if (!result.ok) return result;
+  await commitPlan(result.plan);
+  return { ok: true };
+}
+
+/**
+ * The cash leg a trade names, read back for its correction.
+ *
+ * Null covers three cases that all mean "move no money": the trade names no
+ * leg, the trade is legacy and its link is unknown (`transferId` absent — see
+ * the `Trade` type), or the leg it names has already been deleted. Only a
+ * living, named transfer is corrected alongside its trade.
+ */
+async function readCashLeg(ledgerId: string, trade: Trade | undefined): Promise<HoldingCashLeg | null> {
+  if (!trade?.transferId) return null;
+  const snap = await getDoc(docRef(transactionPath(ledgerId, trade.transferId)));
+  const d = snap.data();
+  if (!d || d.deletedAt) return null;
+  return { txId: snap.id, event: asStored(d) };
 }
 
 export const holdingRepo = {
@@ -173,18 +205,53 @@ export const holdingRepo = {
     return holdingId;
   },
 
-  /** Buy more of a holding (average-cost): shares in, cash paid folded into the
-   *  cost basis, with an optional cash leg. */
-  async buy(ledgerId: string, holding: Holding, input: TradeInput, uid: string): Promise<void> {
+  /** Buy more of a holding: shares in, cash paid folded into the cost basis,
+   *  with an optional cash leg. */
+  async buy(
+    ledgerId: string,
+    holding: Holding,
+    ctx: TradeContext,
+    input: TradeInput,
+    uid: string,
+  ): Promise<TradeOutcome> {
     const ids = tradeIds(ledgerId, holding.id, input.cashAccountId !== null);
-    await commitPlan(planBuy(ledgerId, holding, input, uid, ids));
+    return commitTrade(planBuy(ledgerId, holding, ctx, input, uid, ids));
   },
 
-  /** Sell part or all of a holding (average-cost): removes shares at the average
-   *  cost, banks the realized gain, and moves proceeds to cash (optional leg). */
-  async sell(ledgerId: string, holding: Holding, input: TradeInput, uid: string): Promise<void> {
+  /** Sell part or all of a holding: the fold removes the shares at the average
+   *  cost of the moment and banks the realized gain. */
+  async sell(
+    ledgerId: string,
+    holding: Holding,
+    ctx: TradeContext,
+    input: TradeInput,
+    uid: string,
+  ): Promise<TradeOutcome> {
     const ids = tradeIds(ledgerId, holding.id, input.cashAccountId !== null);
-    await commitPlan(planSell(ledgerId, holding, input, uid, ids));
+    return commitTrade(planSell(ledgerId, holding, ctx, input, uid, ids));
+  },
+
+  /** Correct a trade in place, moving its cash leg with it (ADR-0010). */
+  async editTrade(
+    ledgerId: string,
+    holdingId: string,
+    ctx: TradeContext,
+    tradeId: string,
+    patch: TradeEdit,
+  ): Promise<TradeOutcome> {
+    const leg = await readCashLeg(ledgerId, ctx.trades.find((t) => t.id === tradeId));
+    return commitTrade(planEditTrade(ledgerId, holdingId, ctx, tradeId, patch, leg));
+  },
+
+  /** Soft-delete one trade and reverse its cash leg (ADR-0004). */
+  async deleteTrade(
+    ledgerId: string,
+    holdingId: string,
+    ctx: TradeContext,
+    tradeId: string,
+  ): Promise<TradeOutcome> {
+    const leg = await readCashLeg(ledgerId, ctx.trades.find((t) => t.id === tradeId));
+    return commitTrade(planDeleteTrade(ledgerId, holdingId, ctx, tradeId, leg));
   },
 
   /** Live trade log for one holding, newest first. */

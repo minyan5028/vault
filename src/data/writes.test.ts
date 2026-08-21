@@ -10,11 +10,14 @@ import {
   planSnapshot,
   planSoftDeleteEvent,
   planUpdateEvent,
+  planDeleteTrade,
+  planEditTrade,
   type HoldingCashLeg,
   type NewTransactionInput,
+  type TradeWriteResult,
 } from "./writes";
 import type { StoredEventFields } from "../lib/ledgerEffect";
-import type { Holding } from "../domain/types";
+import type { Trade } from "../domain/types";
 import type { WritePlan } from "./writePlan";
 
 const L = "ledger-1";
@@ -266,133 +269,178 @@ describe("planRemoveHolding", () => {
 });
 
 describe("planBuy / planSell", () => {
-  const holding: Holding = {
-    id: "hold-1",
-    ticker: "VT",
-    name: null,
-    class: "growth",
-    currency: "TWD",
-    cost: 100_000,
-    shares: 100_0000, // 100 shares (×10000)
-    price: 1200,
-    pricedAt: null,
-    realizedGain: 0,
-    dividendReceived: 0,
-    dividendPerShare: 0,
-    targetPrice: null,
-    buyDate: null,
-    archived: false,
-    sortOrder: 0,
+  const holding = { id: "hold-1", ticker: "VT", currency: "TWD" };
+  // 100 shares bought for 100,000 — the log the new trade joins.
+  const opening: Trade = {
+    id: "trade-0",
+    kind: "buy",
+    date: new Date(2026, 0, 5),
+    shares: 100_0000,
+    price: 1000,
+    amount: 100_000,
+    realized: 0,
+  };
+  const ctx = { trades: [opening], latestSnapshot: null };
+  const ok = (r: TradeWriteResult) => {
+    if (!r.ok) throw new Error("expected a plan, got a refusal");
+    return r.plan.ops;
   };
 
-  it("increments shares and cost, and pays from the cash account", () => {
-    const { ops } = planBuy(
-      L,
-      holding,
-      { shares: 10_0000, price: 1300, amount: 13_000, date: JUL, cashAccountId: "cash" },
-      "uid-1",
-      { tradeId: "trade-1", transferId: "tx-1" },
+  it("folds the cost basis absolute and pays from the cash account", () => {
+    const ops = ok(
+      planBuy(
+        L,
+        holding,
+        ctx,
+        { shares: 10_0000, price: 1300, amount: 13_000, date: JUL, cashAccountId: "cash" },
+        "uid-1",
+        { tradeId: "trade-1", transferId: "tx-1" },
+      ),
     );
     expect(ops[0]).toEqual({
       kind: "update",
       path: ["ledgers", L, "holdings", "hold-1"],
-      data: { shares: inc(10_0000), cost: inc(13_000), price: 1300, pricedAt: at(JUL) },
+      data: { cost: 113_000, realizedGain: 0, shares: inc(10_0000) },
     });
     expect(ops[1]).toMatchObject({ path: ["ledgers", L, "holdings", "hold-1", "trades", "trade-1"] });
-    // The cash leg debits cash and credits the holding endpoint.
-    expect(ops[3]).toMatchObject({ data: { netFlow: { cash: inc(-13_000), "hold-1": inc(13_000) } } });
+    // A new trade is also a price observation for its day.
+    expect(ops[2]).toEqual({
+      kind: "update",
+      path: ["ledgers", L, "holdings", "hold-1"],
+      data: { price: 1300, pricedAt: at(JUL) },
+    });
+    expect(ops[4]).toMatchObject({ data: { netFlow: { cash: inc(-13_000), "hold-1": inc(13_000) } } });
   });
 
   it("records no cash leg when none was chosen", () => {
-    const { ops } = planBuy(
-      L,
-      holding,
-      { shares: 10_0000, price: 1300, amount: 13_000, date: JUL, cashAccountId: null },
-      "uid-1",
-      { tradeId: "trade-1" },
+    const ops = ok(
+      planBuy(
+        L,
+        holding,
+        ctx,
+        { shares: 10_0000, price: 1300, amount: 13_000, date: JUL, cashAccountId: null },
+        "uid-1",
+        { tradeId: "trade-1" },
+      ),
     );
-    expect(ops).toHaveLength(2);
+    expect(ops).toHaveLength(3);
   });
 
   it("removes shares at average cost and banks the realized gain", () => {
     // Half the position: cost basis 50,000; sold for 60,000 → +10,000 realized.
-    const { ops } = planSell(
+    const ops = ok(
+      planSell(
+        L,
+        holding,
+        ctx,
+        { shares: 50_0000, price: 1200, amount: 60_000, date: JUL, cashAccountId: "cash" },
+        "uid-1",
+        { tradeId: "trade-1", transferId: "tx-1" },
+      ),
+    );
+    expect(ops[0]).toMatchObject({
+      data: { cost: 50_000, realizedGain: 10_000, shares: inc(-50_0000) },
+    });
+    expect(ops[1]).toMatchObject({ data: { kind: "sell", realized: 10_000 } });
+    expect(ops[4]).toMatchObject({ data: { netFlow: { "hold-1": inc(-60_000), cash: inc(60_000) } } });
+  });
+
+  it("refuses a sell of more shares than were ever bought", () => {
+    const r = planSell(
       L,
       holding,
-      { shares: 50_0000, price: 1200, amount: 60_000, date: JUL, cashAccountId: "cash" },
+      ctx,
+      { shares: 200_0000, price: 1200, amount: 240_000, date: JUL, cashAccountId: "cash" },
       "uid-1",
       { tradeId: "trade-1", transferId: "tx-1" },
     );
-    expect(ops[0]).toMatchObject({
-      data: { shares: inc(-50_0000), cost: inc(-50_000), realizedGain: inc(10_000) },
-    });
-    expect(ops[1]).toMatchObject({ data: { kind: "sell", realized: 10_000 } });
-    // Proceeds move from the holding endpoint back to cash.
-    expect(ops[3]).toMatchObject({ data: { netFlow: { "hold-1": inc(-60_000), cash: inc(60_000) } } });
+    expect(r.ok).toBe(false);
+    if (r.ok) throw new Error("expected a refusal");
+    expect(r.remaining).toBe(-100_0000);
+  });
+
+  it("uses traded shares, not the DRIP-grown held count, for the average cost", () => {
+    // The holding's own `shares` is irrelevant to the fold — only the log counts.
+    const ops = ok(
+      planSell(
+        L,
+        holding,
+        ctx,
+        { shares: 50_0000, price: 1200, amount: 60_000, date: JUL, cashAccountId: null },
+        "uid-1",
+        { tradeId: "trade-1" },
+      ),
+    );
+    expect(ops[0]).toMatchObject({ data: { cost: 50_000 } });
   });
 });
 
 describe("a trade knows its cash leg", () => {
-  const holding: Holding = {
-    id: "hold-1",
-    ticker: "VT",
-    name: null,
-    class: "growth",
-    currency: "TWD",
-    cost: 100_000,
-    shares: 100_0000,
-    price: 1200,
-    pricedAt: null,
-    realizedGain: 0,
-    dividendReceived: 0,
-    dividendPerShare: 0,
-    targetPrice: null,
-    buyDate: null,
-    archived: false,
-    sortOrder: 0,
-  };
+  const holding = { id: "hold-1", ticker: "VT", currency: "TWD" };
+  const ctx = { trades: [] as Trade[], latestSnapshot: null };
   const buy = { shares: 10_0000, price: 1300, amount: 13_000, date: JUL };
 
-  const tradeDoc = (ops: WritePlan["ops"]) => {
+  const tradeDoc = (r: TradeWriteResult) => {
+    if (!r.ok) throw new Error("expected a plan, got a refusal");
+    const op = r.plan.ops.find((o) => o.path.includes("trades"));
+    if (!op || op.kind === "delete") throw new Error("no trade document in the plan");
+    return op.data as Record<string, unknown>;
+  };
+  const openingTradeDoc = (ops: WritePlan["ops"]) => {
     const op = ops.find((o) => o.path.includes("trades"));
     if (!op || op.kind === "delete") throw new Error("no trade document in the plan");
     return op.data as Record<string, unknown>;
   };
 
   it("names the transfer a buy paid through", () => {
-    const { ops } = planBuy(L, holding, { ...buy, cashAccountId: "cash" }, "uid-1", {
+    const r = planBuy(L, holding, ctx, { ...buy, cashAccountId: "cash" }, "uid-1", {
       tradeId: "trade-1",
       transferId: "tx-1",
     });
-    expect(tradeDoc(ops).transferId).toBe("tx-1");
+    expect(tradeDoc(r).transferId).toBe("tx-1");
   });
 
   it("names the transfer a sell's proceeds landed in", () => {
-    const { ops } = planSell(
+    const opened = {
+      trades: [
+        {
+          id: "trade-0",
+          kind: "buy" as const,
+          date: new Date(2026, 0, 5),
+          shares: 100_0000,
+          price: 1000,
+          amount: 100_000,
+          realized: 0,
+        },
+      ],
+      latestSnapshot: null,
+    };
+    const r = planSell(
       L,
       holding,
+      opened,
       { shares: 50_0000, price: 1200, amount: 60_000, date: JUL, cashAccountId: "cash" },
       "uid-1",
       { tradeId: "trade-1", transferId: "tx-1" },
     );
-    expect(tradeDoc(ops).transferId).toBe("tx-1");
+    expect(tradeDoc(r).transferId).toBe("tx-1");
   });
 
   it("records null — not a missing field — for a trade deliberately kept off-cash", () => {
-    const { ops } = planBuy(L, holding, { ...buy, cashAccountId: null }, "uid-1", {
+    const r = planBuy(L, holding, ctx, { ...buy, cashAccountId: null }, "uid-1", {
       tradeId: "trade-1",
     });
-    const data = tradeDoc(ops);
+    const data = tradeDoc(r);
     expect(data.transferId).toBeNull();
     expect("transferId" in data).toBe(true);
   });
 
   it("records null when an id was allocated but no cash account chosen", () => {
-    const { ops } = planBuy(L, holding, { ...buy, cashAccountId: null }, "uid-1", {
+    const r = planBuy(L, holding, ctx, { ...buy, cashAccountId: null }, "uid-1", {
       tradeId: "trade-1",
       transferId: "tx-unused",
     });
-    expect(tradeDoc(ops).transferId).toBeNull();
+    expect(tradeDoc(r).transferId).toBeNull();
   });
 
   it("names the funding transfer on a new holding's opening buy", () => {
@@ -415,7 +463,7 @@ describe("a trade knows its cash leg", () => {
       "uid-1",
       { tradeId: "trade-1", transferId: "tx-1" },
     );
-    expect(tradeDoc(ops).transferId).toBe("tx-1");
+    expect(openingTradeDoc(ops).transferId).toBe("tx-1");
   });
 
   it("records null on a standalone holding's opening buy", () => {
@@ -438,7 +486,313 @@ describe("a trade knows its cash leg", () => {
       "uid-1",
       { tradeId: "trade-1" },
     );
-    expect(tradeDoc(ops).transferId).toBeNull();
+    expect(openingTradeDoc(ops).transferId).toBeNull();
+  });
+});
+
+describe("planEditTrade / planDeleteTrade", () => {
+  const H = "hold-1";
+  const JAN = new Date(2026, 0, 10);
+  const FEB = new Date(2026, 1, 10);
+  const MAR = new Date(2026, 2, 10);
+
+  const openingBuy: Trade = {
+    id: "t-buy",
+    kind: "buy",
+    date: JAN,
+    shares: 100_0000,
+    price: 1000,
+    amount: 100_000,
+    realized: 0,
+    transferId: "tx-buy",
+  };
+  const laterSell: Trade = {
+    id: "t-sell",
+    kind: "sell",
+    date: FEB,
+    shares: 50_0000,
+    price: 1200,
+    amount: 60_000,
+    realized: 10_000,
+    transferId: "tx-sell",
+  };
+
+  const leg = (txId: string, amount: number, accountId: string, toAccountId: string): HoldingCashLeg => ({
+    txId,
+    event: {
+      type: "transfer",
+      accountId,
+      toAccountId,
+      amount,
+      toAmount: amount,
+      baseAmount: amount,
+      fxRate: 1,
+      categoryId: null,
+      yearMonth: "2026-01",
+    },
+  });
+  const buyLeg = leg("tx-buy", 100_000, "cash", H);
+
+  const ok = (r: TradeWriteResult) => {
+    if (!r.ok) throw new Error("expected a plan, got a refusal");
+    return r.plan.ops;
+  };
+  const holdingOp = (ops: WritePlan["ops"]) => {
+    const op = ops.find((o) => o.path.length === 4 && o.path[2] === "holdings");
+    if (!op || op.kind === "delete") throw new Error("no holding update in the plan");
+    return op.data as Record<string, unknown>;
+  };
+  const opAt = (ops: WritePlan["ops"], path: readonly string[]) => {
+    const op = ops.find((o) => o.path.join("/") === path.join("/"));
+    if (!op || op.kind === "delete") throw new Error(`no write at ${path.join("/")}`);
+    return op.data as Record<string, unknown>;
+  };
+  const tradePath = (id: string) => ["ledgers", L, "holdings", H, "trades", id];
+
+  it("recomputes cost by replaying the log, not by applying a delta", () => {
+    const ops = ok(
+      planEditTrade(
+        L,
+        H,
+        { trades: [openingBuy], latestSnapshot: null },
+        "t-buy",
+        { amount: 130_000 },
+        buyLeg,
+      ),
+    );
+    expect(holdingOp(ops)).toMatchObject({ cost: 130_000, realizedGain: 0 });
+  });
+
+  it("re-prices a later sell when the buy before it changes", () => {
+    // Buy 100 for 200,000 (avg 2,000); the Feb sell of 50 for 60,000 now loses
+    // 40,000 instead of gaining 10,000.
+    const ops = ok(
+      planEditTrade(
+        L,
+        H,
+        { trades: [openingBuy, laterSell], latestSnapshot: null },
+        "t-buy",
+        { amount: 200_000 },
+        buyLeg,
+      ),
+    );
+    expect(holdingOp(ops)).toMatchObject({ cost: 100_000, realizedGain: -40_000 });
+    expect(opAt(ops, tradePath("t-sell"))).toEqual({ realized: -40_000 });
+  });
+
+  it("writes the corrected fields onto the trade itself", () => {
+    const ops = ok(
+      planEditTrade(
+        L,
+        H,
+        { trades: [openingBuy], latestSnapshot: null },
+        "t-buy",
+        { date: MAR, shares: 90_0000, price: 1100, amount: 99_000 },
+        buyLeg,
+      ),
+    );
+    expect(opAt(ops, tradePath("t-buy"))).toEqual({
+      date: at(MAR),
+      shares: 90_0000,
+      price: 1100,
+      amount: 99_000,
+      realized: 0,
+      updatedAt: serverTime,
+    });
+  });
+
+  it("never moves the displayed price — that belongs to the snapshots", () => {
+    const ops = ok(
+      planEditTrade(
+        L,
+        H,
+        { trades: [openingBuy], latestSnapshot: null },
+        "t-buy",
+        { price: 9999 },
+        buyLeg,
+      ),
+    );
+    expect(holdingOp(ops)).not.toHaveProperty("price");
+    expect(holdingOp(ops)).not.toHaveProperty("pricedAt");
+  });
+
+  describe("held shares follow the snapshot boundary", () => {
+    it("moves held shares for a trade the snapshots have not yet seen", () => {
+      const ops = ok(
+        planEditTrade(
+          L,
+          H,
+          { trades: [openingBuy], latestSnapshot: new Date(2026, 0, 1) },
+          "t-buy",
+          { shares: 90_0000 },
+          buyLeg,
+        ),
+      );
+      expect(holdingOp(ops).shares).toEqual(inc(-10_0000));
+    });
+
+    it("leaves held shares alone for a trade a later snapshot has superseded", () => {
+      const ops = ok(
+        planEditTrade(
+          L,
+          H,
+          { trades: [openingBuy], latestSnapshot: FEB },
+          "t-buy",
+          { shares: 90_0000 },
+          buyLeg,
+        ),
+      );
+      expect(holdingOp(ops)).not.toHaveProperty("shares");
+    });
+
+    it("counts a snapshot's own date as already read — it is an end-of-day position", () => {
+      const ops = ok(
+        planEditTrade(
+          L,
+          H,
+          { trades: [openingBuy], latestSnapshot: JAN },
+          "t-buy",
+          { shares: 90_0000 },
+          buyLeg,
+        ),
+      );
+      expect(holdingOp(ops)).not.toHaveProperty("shares");
+    });
+
+    it("takes the contribution with it when a correction crosses the boundary", () => {
+      // Dated before the snapshot, so contributing nothing; moved after it, so
+      // it must now stand in for a reading that has not happened.
+      const ops = ok(
+        planEditTrade(
+          L,
+          H,
+          { trades: [openingBuy], latestSnapshot: FEB },
+          "t-buy",
+          { date: MAR },
+          buyLeg,
+        ),
+      );
+      expect(holdingOp(ops).shares).toEqual(inc(100_0000));
+    });
+  });
+
+  it("moves the cash leg with the money and the date", () => {
+    const ops = ok(
+      planEditTrade(
+        L,
+        H,
+        { trades: [openingBuy], latestSnapshot: null },
+        "t-buy",
+        { amount: 130_000, date: MAR },
+        buyLeg,
+      ),
+    );
+    const legWrite = opAt(ops, ["ledgers", L, "transactions", "tx-buy"]);
+    expect(legWrite).toMatchObject({ amount: 130_000, toAmount: 130_000, baseAmount: 130_000 });
+    // The extra 30,000 leaves cash and lands on the holding endpoint.
+    expect(opAt(ops, balancesPath)).toEqual({
+      netFlow: { cash: inc(-30_000), [H]: inc(30_000) },
+    });
+  });
+
+  it("changes the trade only when its cash-leg link is unknown", () => {
+    const legacy: Trade = { ...openingBuy, transferId: undefined };
+    const ops = ok(
+      planEditTrade(
+        L,
+        H,
+        { trades: [legacy], latestSnapshot: null },
+        "t-buy",
+        { amount: 130_000 },
+        null,
+      ),
+    );
+    expect(ops.some((o) => o.path.includes("transactions"))).toBe(false);
+    expect(ops.some((o) => o.path.join("/") === balancesPath.join("/"))).toBe(false);
+  });
+
+  it("refuses a correction that would sell shares that were never bought", () => {
+    const r = planEditTrade(
+      L,
+      H,
+      { trades: [openingBuy, laterSell], latestSnapshot: null },
+      "t-buy",
+      { shares: 10_0000 },
+      buyLeg,
+    );
+    expect(r.ok).toBe(false);
+    if (r.ok) throw new Error("expected a refusal");
+    expect(r.blockedBy.id).toBe("t-sell");
+    expect(r.remaining).toBe(-40_0000);
+  });
+
+  it("soft-deletes a trade rather than removing the document", () => {
+    const ops = ok(
+      planDeleteTrade(L, H, { trades: [openingBuy, laterSell], latestSnapshot: null }, "t-sell",
+        leg("tx-sell", 60_000, H, "cash")),
+    );
+    expect(opAt(ops, tradePath("t-sell"))).toEqual({
+      deletedAt: serverTime,
+      updatedAt: serverTime,
+    });
+    expect(ops.every((o) => o.kind !== "delete")).toBe(true);
+  });
+
+  it("drops a deleted trade from the fold and reverses its cash leg exactly once", () => {
+    const ops = ok(
+      planDeleteTrade(L, H, { trades: [openingBuy, laterSell], latestSnapshot: null }, "t-sell",
+        leg("tx-sell", 60_000, H, "cash")),
+    );
+    // Back to the whole opening position, with nothing realized.
+    expect(holdingOp(ops)).toMatchObject({ cost: 100_000, realizedGain: 0 });
+    expect(opAt(ops, ["ledgers", L, "transactions", "tx-sell"])).toEqual({
+      deletedAt: serverTime,
+      updatedAt: serverTime,
+    });
+    expect(opAt(ops, balancesPath)).toEqual({
+      netFlow: { [H]: inc(60_000), cash: inc(-60_000) },
+    });
+  });
+
+  it("gives back what a deleted trade was contributing to held shares", () => {
+    const ops = ok(
+      planDeleteTrade(
+        L,
+        H,
+        { trades: [openingBuy], latestSnapshot: new Date(2026, 0, 1) },
+        "t-buy",
+        buyLeg,
+      ),
+    );
+    expect(holdingOp(ops).shares).toEqual(inc(-100_0000));
+  });
+
+  it("refuses a deletion that would strand a later sell", () => {
+    const r = planDeleteTrade(
+      L,
+      H,
+      { trades: [openingBuy, laterSell], latestSnapshot: null },
+      "t-buy",
+      buyLeg,
+    );
+    if (r.ok) throw new Error("expected a refusal");
+    expect(r.blockedBy.id).toBe("t-sell");
+  });
+
+  it("reproduces an untouched holding's stored figures — the fold agrees with the increments", () => {
+    // What planBuy/planSell built incrementally for this log: cost 50,000 and
+    // 10,000 realized. A no-op correction must land on exactly those.
+    const ops = ok(
+      planEditTrade(
+        L,
+        H,
+        { trades: [openingBuy, laterSell], latestSnapshot: null },
+        "t-sell",
+        {},
+        null,
+      ),
+    );
+    expect(holdingOp(ops)).toMatchObject({ cost: 50_000, realizedGain: 10_000 });
   });
 });
 

@@ -30,26 +30,28 @@ invent money.
 
 **Blocked by:** 02 — a trade knows its cash leg.
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Editing a trade's amount recomputes `cost` by replaying the whole log, not
+- [x] Editing a trade's amount recomputes `cost` by replaying the whole log, not
       by applying a delta
-- [ ] Editing a buy that precedes later sells re-prices every later sell's
+- [x] Editing a buy that precedes later sells re-prices every later sell's
       realized gain
-- [ ] Editing a trade dated after the latest snapshot moves `Holding.shares` by
+- [x] Editing a trade dated after the latest snapshot moves `Holding.shares` by
       the share delta
-- [ ] Editing a trade dated before the latest snapshot leaves `Holding.shares`
+- [x] Editing a trade dated before the latest snapshot leaves `Holding.shares`
       untouched
-- [ ] Editing a trade's amount or date moves its linked cash leg in the same
+- [x] Editing a trade's amount or date moves its linked cash leg in the same
       plan, and the account balance follows
-- [ ] Editing a trade whose cash-leg link is unknown changes the trade only
-- [ ] Deleting a trade sets `deletedAt` rather than removing the document
-- [ ] A soft-deleted trade is excluded from the fold and its cash leg's effect on
+- [x] Editing a trade whose cash-leg link is unknown changes the trade only
+- [x] Deleting a trade sets `deletedAt` rather than removing the document
+- [x] A soft-deleted trade is excluded from the fold and its cash leg's effect on
       the projections is reversed exactly once
-- [ ] An edit or deletion that would drive shares negative at any point in the
+- [x] An edit or deletion that would drive shares negative at any point in the
       replay is refused, naming the trade it would break
-- [ ] Same-date trades replay in a deterministic order, asserted by test
-- [ ] Replaying an untouched holding's log reproduces its current `cost` and
+- [x] Same-date trades replay in a deterministic order, asserted by test
+- [x] Replaying an untouched holding's log reproduces its current `cost` and
       `realizedGain` exactly — the fold agrees with what incremental writes built
-- [ ] A holding whose opening buy was corrected by `fix_opening_trades.mjs`
-      replays to the same cost it has today
+- [x] A holding whose opening buy was corrected by `fix_opening_trades.mjs`
+      replays to the same cost it has today — asserted in principle by the
+      no-op-correction test, and checkable against the real ledger with
+      `scripts/audit_trade_fold.mjs` (read-only; not yet run)

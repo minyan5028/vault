@@ -158,5 +158,6 @@
   "namePlaceholder": "名稱",
   "iconPlaceholder": "圖示",
   "signIn": "使用 Google 登入",
-  "signOut": "登出"
+  "signOut": "登出",
+  "tradeRefused": "這會讓 {{date}} 的{{kind}}只剩 {{shares}} 股。請先修正那一筆。"
 }

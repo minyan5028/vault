@@ -9,6 +9,7 @@ import {
   avgCost,
   dividendMetrics,
   estimatedDividends,
+  replayTrades,
 } from "./holdings";
 import type { HoldingClass, PortfolioSnapshot, Trade } from "../domain/types";
 
@@ -187,5 +188,107 @@ describe("portfolioTotals", () => {
     expect(totals.costBase).toBe(totals.valueBase - totals.gainBase);
     expect(totals.realizedBase).toBe(30 * 5000); // one USD holding, realized 5000 @ rate 30
     expect(totals.byClass.growth.realizedBase).toBe(30 * 5000);
+  });
+});
+
+describe("replayTrades", () => {
+  const t = (over: Partial<Trade> & Pick<Trade, "id" | "kind">): Trade => ({
+    date: new Date(2026, 0, 1),
+    shares: 0,
+    price: 0,
+    amount: 0,
+    realized: 0,
+    ...over,
+  });
+  const buy = (id: string, date: Date, shares: number, amount: number) =>
+    t({ id, kind: "buy", date, shares, amount });
+  const sell = (id: string, date: Date, shares: number, amount: number) =>
+    t({ id, kind: "sell", date, shares, amount });
+
+  const JAN = new Date(2026, 0, 10);
+  const FEB = new Date(2026, 1, 10);
+  const MAR = new Date(2026, 2, 10);
+
+  it("folds buys into traded shares and cost basis", () => {
+    const r = replayTrades([buy("a", JAN, 10_0000, 100_000), buy("b", FEB, 5_0000, 60_000)]);
+    expect(r).toMatchObject({ ok: true, tradedShares: 15_0000, cost: 160_000, realizedGain: 0 });
+  });
+
+  it("removes shares at the average cost at that moment and banks the gain", () => {
+    // 100 shares for 100,000 → avg 1,000. Sell 50 for 60,000 → +10,000 realized.
+    const r = replayTrades([buy("a", JAN, 100_0000, 100_000), sell("b", FEB, 50_0000, 60_000)]);
+    expect(r).toMatchObject({ ok: true, tradedShares: 50_0000, cost: 50_000, realizedGain: 10_000 });
+  });
+
+  it("re-prices a later sell when an earlier buy changes — the whole point of a fold", () => {
+    const dearer = replayTrades([buy("a", JAN, 100_0000, 200_000), sell("b", FEB, 50_0000, 60_000)]);
+    expect(dearer).toMatchObject({ ok: true, tradedShares: 50_0000, cost: 100_000, realizedGain: -40_000 });
+  });
+
+  it("replays in date order regardless of the order given", () => {
+    const trades = [sell("b", FEB, 50_0000, 60_000), buy("a", JAN, 100_0000, 100_000)];
+    expect(replayTrades(trades)).toEqual(replayTrades([...trades].reverse()));
+  });
+
+  it("puts a buy before a sell on the same date — you cannot sell what you have not bought", () => {
+    const sameDay = [sell("b", JAN, 50_0000, 60_000), buy("a", JAN, 100_0000, 100_000)];
+    expect(replayTrades(sameDay)).toMatchObject({
+      ok: true,
+      tradedShares: 50_0000,
+      cost: 50_000,
+      realizedGain: 10_000,
+    });
+  });
+
+  it("orders same-date same-kind trades by id, so the basis is reproducible", () => {
+    const a = [buy("a", JAN, 10_0000, 10_000), buy("b", JAN, 10_0000, 30_000)];
+    expect(replayTrades(a)).toEqual(replayTrades([...a].reverse()));
+  });
+
+  it("excludes soft-deleted trades", () => {
+    const r = replayTrades([
+      buy("a", JAN, 10_0000, 100_000),
+      { ...buy("b", FEB, 5_0000, 60_000), deletedAt: MAR },
+    ]);
+    expect(r).toMatchObject({ ok: true, tradedShares: 10_0000, cost: 100_000, realizedGain: 0 });
+  });
+
+  it("refuses a replay that would sell shares that were never bought", () => {
+    const r = replayTrades([buy("a", JAN, 10_0000, 100_000), sell("b", FEB, 50_0000, 60_000)]);
+    expect(r.ok).toBe(false);
+    if (r.ok) throw new Error("expected a refusal");
+    expect(r.blockedBy.id).toBe("b");
+    expect(r.remaining).toBe(-40_0000);
+  });
+
+  it("names the first trade that breaks, not the last", () => {
+    const r = replayTrades([
+      buy("a", JAN, 10_0000, 100_000),
+      sell("b", FEB, 50_0000, 60_000),
+      sell("c", MAR, 90_0000, 90_000),
+    ]);
+    if (r.ok) throw new Error("expected a refusal");
+    expect(r.blockedBy.id).toBe("b");
+  });
+
+  it("allows selling the position down to exactly zero", () => {
+    const r = replayTrades([buy("a", JAN, 10_0000, 100_000), sell("b", FEB, 10_0000, 120_000)]);
+    expect(r).toMatchObject({ ok: true, tradedShares: 0, cost: 0, realizedGain: 20_000 });
+  });
+
+  it("attributes realized gain to the sell that produced it", () => {
+    const r = replayTrades([
+      buy("a", JAN, 100_0000, 100_000),
+      sell("b", FEB, 50_0000, 60_000),
+      sell("c", MAR, 50_0000, 40_000),
+    ]);
+    if (!r.ok) throw new Error("expected a successful replay");
+    expect(r.realizedByTrade.get("b")).toBe(10_000);
+    expect(r.realizedByTrade.get("c")).toBe(-10_000);
+    expect(r.realizedByTrade.has("a")).toBe(false);
+  });
+
+  it("folds an empty log to an empty position", () => {
+    expect(replayTrades([])).toMatchObject({ ok: true, tradedShares: 0, cost: 0, realizedGain: 0 });
   });
 });

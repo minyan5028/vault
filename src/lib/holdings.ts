@@ -248,3 +248,88 @@ export function portfolioTotals(
   }
   return { valueBase, costBase, gainBase, realizedBase, byClass };
 }
+
+/**
+ * The position a trade log adds up to: what was bought, what it cost, and what
+ * selling has banked so far.
+ *
+ * `tradedShares` is what the owner *bought* — not what they hold. Reinvestment
+ * grows the broker's count without any trade behind it, so held shares live on
+ * the Holding and come from snapshots (ADR-0010). The two are equal only for a
+ * position that has never reinvested.
+ */
+export interface ReplayedPosition {
+  tradedShares: number;
+  cost: number;
+  realizedGain: number;
+  /** Realized gain attributed to each sell, by trade id. A sell's realized
+   *  figure is a fold output, not an input: editing an earlier buy re-prices
+   *  it, so the stored copy on the trade has to be rewritten with it. */
+  realizedByTrade: ReadonlyMap<string, number>;
+}
+
+/**
+ * A replay either adds up or it does not. When a sell reaches further back than
+ * the buys can support, the fold names the trade it broke on and by how much,
+ * so a refused correction can say *which* trade to fix first rather than
+ * failing generically.
+ */
+export type ReplayResult =
+  | ({ ok: true } & ReplayedPosition)
+  | { ok: false; blockedBy: Trade; remaining: number };
+
+/**
+ * Replay order. Date first, then buys before sells, then id.
+ *
+ * The middle rule is domain, not tie-breaking: a same-day buy and sell can only
+ * have happened in that order, because the shares had to exist before they were
+ * sold. Id last makes the order total, so the same log always folds to the same
+ * basis — average cost is path-dependent, and a wobbly order would make the
+ * cost basis irreproducible.
+ */
+function replayOrder(a: Trade, b: Trade): number {
+  const byDate = a.date.getTime() - b.date.getTime();
+  if (byDate !== 0) return byDate;
+  if (a.kind !== b.kind) return a.kind === "buy" ? -1 : 1;
+  return a.id.localeCompare(b.id);
+}
+
+/**
+ * Fold a holding's trade log into its cost basis and realized gain.
+ *
+ * This is the only route to those two numbers (ADR-0010): they are recomputed
+ * from the surviving trades rather than patched incrementally, which is what
+ * makes a trade correctable at all. Editing an early buy re-prices every later
+ * sell, because average cost is path-dependent — that is the intended
+ * consequence, not a side effect.
+ *
+ * Soft-deleted trades are excluded (ADR-0004).
+ */
+export function replayTrades(trades: readonly Trade[]): ReplayResult {
+  const log = trades.filter((t) => !t.deletedAt).sort(replayOrder);
+  let position: Position = { shares: 0, cost: 0 };
+  let realizedGain = 0;
+  const realizedByTrade = new Map<string, number>();
+
+  for (const t of log) {
+    if (t.kind === "buy") {
+      position = applyBuy(position, t.shares, t.amount);
+      continue;
+    }
+    if (t.shares > position.shares) {
+      return { ok: false, blockedBy: t, remaining: position.shares - t.shares };
+    }
+    const r = applySell(position, t.shares, t.amount);
+    position = { shares: r.shares, cost: r.cost };
+    realizedGain += r.realized;
+    realizedByTrade.set(t.id, r.realized);
+  }
+
+  return {
+    ok: true,
+    tradedShares: position.shares,
+    cost: position.cost,
+    realizedGain,
+    realizedByTrade,
+  };
+}

@@ -9,7 +9,7 @@
  * seam between: read → plan → execute.
  */
 import { yearMonthOf } from "../lib/date";
-import { applySell } from "../lib/holdings";
+import { replayTrades, type ReplayedPosition } from "../lib/holdings";
 import {
   combineEffects,
   ledgerEffect,
@@ -25,6 +25,7 @@ import {
   type EventType,
   type Holding,
   type SnapshotEntry,
+  type Trade,
   type TradeKind,
 } from "../domain/types";
 import {
@@ -503,72 +504,321 @@ export function planAddHolding(
   );
 }
 
-/** Buy more of a holding (average-cost): shares in, cash paid folded into the
- *  cost basis, with an optional cash leg. */
-export function planBuy(
-  ledgerId: string,
-  holding: Holding,
-  input: TradeInput,
-  uid: string,
-  ids: TradeIds,
-): WritePlan {
-  return concatPlans(
-    {
-      ops: [
-        {
-          kind: "update",
-          path: holdingPath(ledgerId, holding.id),
-          data: {
-            shares: incrementBy(input.shares),
-            cost: incrementBy(input.amount),
-            price: input.price,
-            pricedAt: atTime(input.date),
-          },
-        },
-        {
-          kind: "set",
-          path: tradePath(ledgerId, holding.id, ids.tradeId),
-          data: tradeDocData("buy", input, 0, cashLegId(input, ids)),
-        },
-      ],
-    },
-    planTradeCashLeg(ledgerId, "buy", holding, input, uid, ids),
-  );
+// ── Trade writes ──────────────────────────────────────────────────────────────
+
+/** The fields of a trade a correction may change. Not the cash account: moving
+ *  a trade to a different account means deleting it and recording it again. */
+export interface TradeEdit {
+  date?: Date;
+  shares?: number;
+  price?: number;
+  amount?: number;
 }
 
-/** Sell part or all of a holding (average-cost): removes shares at the average
- *  cost, banks the realized gain, and moves proceeds to cash (optional leg). */
-export function planSell(
+/**
+ * A trade write either adds up or it is refused.
+ *
+ * Average cost is path-dependent, so a correction reaches forward: deleting an
+ * early buy can leave a later sell selling shares that were never bought.
+ * Refusing names the trade the replay broke on and by how much, so the owner is
+ * told which trade to fix first. Clamping instead would invent money.
+ */
+export type TradeWriteResult =
+  | { ok: true; plan: WritePlan }
+  | { ok: false; blockedBy: Trade; remaining: number };
+
+/**
+ * What a trade write needs beyond the trade itself.
+ *
+ * `trades` is the holding's stored log — including the trade being edited or
+ * deleted, excluding one being added. The caller already has it (the detail
+ * screen subscribes to it), so folding costs no extra read.
+ */
+export interface TradeContext {
+  trades: readonly Trade[];
+  /** Date of the most recent portfolio snapshot, or null if never snapshotted. */
+  latestSnapshot: Date | null;
+}
+
+/**
+ * What a trade contributes to *held* shares.
+ *
+ * Snapshots own held shares and supersede every estimate before them
+ * (ADR-0010), so a trade dated on or before the latest snapshot contributes
+ * nothing — the broker's own reading has already counted it, and adding the
+ * trade's shares again would double-count. Only a trade after the last snapshot
+ * has to stand in for a reading that has not happened yet.
+ *
+ * On the snapshot's own date the reading wins: a snapshot is an end-of-day
+ * position, so it already includes that day's trading.
+ */
+function heldSharesContribution(
+  t: Pick<Trade, "kind" | "shares" | "date"> | null,
+  latestSnapshot: Date | null,
+): number {
+  if (!t) return 0;
+  if (latestSnapshot && t.date.getTime() <= latestSnapshot.getTime()) return 0;
+  return t.kind === "buy" ? t.shares : -t.shares;
+}
+
+/**
+ * The holding update a fold decides.
+ *
+ * `cost` and `realizedGain` are written **absolute**, never incremented. They
+ * are the fold's output (ADR-0010); incrementing would carry forward whatever
+ * drift the stored figure already had, which is exactly how the log and the
+ * aggregate came apart in the first place.
+ *
+ * `price` and `pricedAt` are deliberately absent: they belong to the valuation
+ * axis, and correcting a two-year-old trade must not move today's price.
+ */
+function planFold(
   ledgerId: string,
-  holding: Holding,
+  holdingId: string,
+  fold: ReplayedPosition,
+  sharesDelta: number,
+): WritePlan {
+  const data: PlanData = { cost: fold.cost, realizedGain: fold.realizedGain };
+  if (sharesDelta !== 0) data.shares = incrementBy(sharesDelta);
+  return { ops: [{ kind: "update", path: holdingPath(ledgerId, holdingId), data }] };
+}
+
+/**
+ * Re-price the `realized` cached on each sell the fold moved.
+ *
+ * A sell's realized gain is a fold output, not an input — editing an earlier
+ * buy re-prices every sell after it. Leaving the stored copies alone would make
+ * the log disagree with the aggregate it is supposed to add up to.
+ *
+ * `skipId` is the trade whose document this plan already rewrites in full; its
+ * realized figure travels in that write instead of a second one.
+ */
+function planRealizedRewrites(
+  ledgerId: string,
+  holdingId: string,
+  log: readonly Trade[],
+  fold: ReplayedPosition,
+  skipId?: string,
+): WritePlan {
+  const ops: WriteOp[] = [];
+  for (const t of log) {
+    if (t.kind !== "sell" || t.deletedAt || t.id === skipId) continue;
+    const now = fold.realizedByTrade.get(t.id) ?? 0;
+    if (now !== t.realized)
+      ops.push({
+        kind: "update",
+        path: tradePath(ledgerId, holdingId, t.id),
+        data: { realized: now },
+      });
+  }
+  return { ops };
+}
+
+/** The trade a buy or sell adds, as it will read back from the log. */
+function addedTrade(kind: TradeKind, id: string, input: TradeInput): Trade {
+  return {
+    id,
+    kind,
+    date: input.date,
+    shares: input.shares,
+    price: input.price,
+    amount: input.amount,
+    realized: 0,
+  };
+}
+
+/** Record a trade and re-fold the holding it belongs to. */
+function planAddTrade(
+  ledgerId: string,
+  kind: TradeKind,
+  holding: Pick<Holding, "id" | "ticker" | "currency">,
+  ctx: TradeContext,
   input: TradeInput,
   uid: string,
   ids: TradeIds,
-): WritePlan {
-  const r = applySell({ shares: holding.shares, cost: holding.cost }, input.shares, input.amount);
-  return concatPlans(
-    {
-      ops: [
-        {
-          kind: "update",
-          path: holdingPath(ledgerId, holding.id),
-          data: {
-            shares: incrementBy(-input.shares),
-            cost: incrementBy(-r.costRemoved),
-            realizedGain: incrementBy(r.realized),
-            price: input.price,
-            pricedAt: atTime(input.date),
+): TradeWriteResult {
+  const added = addedTrade(kind, ids.tradeId, input);
+  const log = [...ctx.trades, added];
+  const fold = replayTrades(log);
+  if (!fold.ok) return fold;
+
+  const realized = fold.realizedByTrade.get(added.id) ?? 0;
+  return {
+    ok: true,
+    plan: concatPlans(
+      planFold(ledgerId, holding.id, fold, heldSharesContribution(added, ctx.latestSnapshot)),
+      {
+        ops: [
+          {
+            kind: "set",
+            path: tradePath(ledgerId, holding.id, ids.tradeId),
+            // A trade is also a price observation on the day it happened, so a
+            // new one refreshes the displayed price — unlike a correction to an
+            // old one, which must not.
+            data: tradeDocData(kind, input, realized, cashLegId(input, ids)),
           },
-        },
-        {
-          kind: "set",
-          path: tradePath(ledgerId, holding.id, ids.tradeId),
-          data: tradeDocData("sell", input, r.realized, cashLegId(input, ids)),
-        },
-      ],
-    },
-    planTradeCashLeg(ledgerId, "sell", holding, input, uid, ids),
-  );
+          {
+            kind: "update",
+            path: holdingPath(ledgerId, holding.id),
+            data: { price: input.price, pricedAt: atTime(input.date) },
+          },
+        ],
+      },
+      planRealizedRewrites(ledgerId, holding.id, log, fold, added.id),
+      planTradeCashLeg(ledgerId, kind, holding, input, uid, ids),
+    ),
+  };
+}
+
+/** Buy more of a holding: shares in, cash paid folded into the cost basis, with
+ *  an optional cash leg. */
+export function planBuy(
+  ledgerId: string,
+  holding: Pick<Holding, "id" | "ticker" | "currency">,
+  ctx: TradeContext,
+  input: TradeInput,
+  uid: string,
+  ids: TradeIds,
+): TradeWriteResult {
+  return planAddTrade(ledgerId, "buy", holding, ctx, input, uid, ids);
+}
+
+/** Sell part or all of a holding: the fold removes the shares at the average
+ *  cost of the moment and banks the realized gain. */
+export function planSell(
+  ledgerId: string,
+  holding: Pick<Holding, "id" | "ticker" | "currency">,
+  ctx: TradeContext,
+  input: TradeInput,
+  uid: string,
+  ids: TradeIds,
+): TradeWriteResult {
+  return planAddTrade(ledgerId, "sell", holding, ctx, input, uid, ids);
+}
+
+/** The field updates a correction writes to the trade document itself. */
+function tradePatchData(patch: TradeEdit, realized: number): PlanData {
+  const data: PlanData = { realized, updatedAt: serverTime() };
+  if (patch.date) data.date = atTime(patch.date);
+  if (patch.shares !== undefined) data.shares = patch.shares;
+  if (patch.price !== undefined) data.price = patch.price;
+  if (patch.amount !== undefined) data.amount = patch.amount;
+  return data;
+}
+
+/**
+ * The cash leg's own correction, when the trade has one.
+ *
+ * Only the money and the date can move — a trade's cash account is not
+ * editable — and the leg is single-currency at rate 1, so `amount`, `toAmount`
+ * and `baseAmount` are the same figure. A trade whose link is unknown (a legacy
+ * trade, see the `Trade` type) simply moves no money: the alternative is
+ * guessing which transfer to touch.
+ */
+function planLegCorrection(
+  ledgerId: string,
+  leg: HoldingCashLeg | null,
+  patch: TradeEdit,
+): WritePlan {
+  if (!leg) return { ops: [] };
+  const legPatch: Partial<NewTransactionInput> = {};
+  if (patch.amount !== undefined) {
+    legPatch.amount = patch.amount;
+    legPatch.toAmount = patch.amount;
+    legPatch.baseAmount = patch.amount;
+  }
+  if (patch.date) legPatch.date = patch.date;
+  if (Object.keys(legPatch).length === 0) return { ops: [] };
+  return planUpdateEvent(ledgerId, leg.txId, leg.event, legPatch, { deleted: false });
+}
+
+/**
+ * Correct a trade in place (ADR-0005's loose model, which trades never
+ * honoured): rewrite the changed fields, re-fold the holding from the surviving
+ * log, and move the cash leg with it.
+ *
+ * The share delta obeys the dated rule — a trade after the latest snapshot
+ * stands in for a reading that has not happened, one before it has already been
+ * superseded. A correction that moves a trade across that boundary therefore
+ * takes its contribution with it.
+ */
+export function planEditTrade(
+  ledgerId: string,
+  holdingId: string,
+  ctx: TradeContext,
+  tradeId: string,
+  patch: TradeEdit,
+  leg: HoldingCashLeg | null,
+): TradeWriteResult {
+  const before = ctx.trades.find((t) => t.id === tradeId);
+  if (!before) throw new Error(`trade ${tradeId} is not in the log`);
+  const after: Trade = { ...before, ...patch };
+  const log = ctx.trades.map((t) => (t.id === tradeId ? after : t));
+  const fold = replayTrades(log);
+  if (!fold.ok) return fold;
+
+  const delta =
+    heldSharesContribution(after.deletedAt ? null : after, ctx.latestSnapshot) -
+    heldSharesContribution(before.deletedAt ? null : before, ctx.latestSnapshot);
+
+  return {
+    ok: true,
+    plan: concatPlans(
+      planFold(ledgerId, holdingId, fold, delta),
+      {
+        ops: [
+          {
+            kind: "update",
+            path: tradePath(ledgerId, holdingId, tradeId),
+            data: tradePatchData(patch, fold.realizedByTrade.get(tradeId) ?? 0),
+          },
+        ],
+      },
+      planRealizedRewrites(ledgerId, holdingId, log, fold, tradeId),
+      planLegCorrection(ledgerId, leg, patch),
+    ),
+  };
+}
+
+/**
+ * Soft-delete one trade (ADR-0004): drop it from the fold, reverse its cash
+ * leg, and give back whatever it was contributing to held shares.
+ *
+ * Soft, because a trade is a Financial Event and ADR-0004 already decided that
+ * those are never physically deleted — the trade path simply never caught up.
+ */
+export function planDeleteTrade(
+  ledgerId: string,
+  holdingId: string,
+  ctx: TradeContext,
+  tradeId: string,
+  leg: HoldingCashLeg | null,
+): TradeWriteResult {
+  const before = ctx.trades.find((t) => t.id === tradeId);
+  if (!before) throw new Error(`trade ${tradeId} is not in the log`);
+  const log = ctx.trades.filter((t) => t.id !== tradeId);
+  const fold = replayTrades(log);
+  if (!fold.ok) return fold;
+
+  const delta = -heldSharesContribution(before.deletedAt ? null : before, ctx.latestSnapshot);
+
+  return {
+    ok: true,
+    plan: concatPlans(
+      planFold(ledgerId, holdingId, fold, delta),
+      {
+        ops: [
+          {
+            kind: "update",
+            path: tradePath(ledgerId, holdingId, tradeId),
+            data: { deletedAt: serverTime(), updatedAt: serverTime() },
+          },
+        ],
+      },
+      planRealizedRewrites(ledgerId, holdingId, log, fold),
+      leg ? planSoftDeleteEvent(ledgerId, leg.txId, leg.event) : { ops: [] },
+    ),
+  };
 }
 
 /** One of a holding's paired cash transfers, as read back from storage. */
