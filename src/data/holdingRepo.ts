@@ -72,6 +72,10 @@ function toTrade(s: QueryDocumentSnapshot<DocumentData>): Trade {
     price: d.price ?? 0,
     amount: d.amount ?? 0,
     realized: d.realized ?? 0,
+    // Deliberately not defaulted: absent means "legacy, link unknown", which is
+    // a different answer from null's "deliberately no cash leg" (see Trade).
+    transferId: d.transferId,
+    deletedAt: (d.deletedAt as Timestamp | null | undefined)?.toDate() ?? d.deletedAt ?? null,
   };
 }
 

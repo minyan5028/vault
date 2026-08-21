@@ -389,7 +389,32 @@ export function tradeTransfer(
   };
 }
 
-function tradeDocData(kind: TradeKind, input: TradeInput, realized: number): PlanData {
+/**
+ * The transfer this trade moves money through, or null when it moves none.
+ *
+ * An id is allocated up front by the caller, before it is known whether the
+ * trade wants a cash leg, so `ids.transferId` alone does not mean there is one
+ * — the cash account is what decides. Both this and `planTradeCashLeg` ask the
+ * same question, and must keep agreeing: a trade naming a transfer that was
+ * never written could not be edited without inventing one.
+ */
+function cashLegId(input: TradeInput, ids: TradeIds): string | null {
+  return input.cashAccountId && ids.transferId ? ids.transferId : null;
+}
+
+/**
+ * The stored document body for a trade.
+ *
+ * `transferId` is written even when null: absent means a legacy trade whose leg
+ * cannot be attributed, which is a third state the edit path has to tell apart
+ * from "deliberately no cash leg" (ADR-0010).
+ */
+function tradeDocData(
+  kind: TradeKind,
+  input: TradeInput,
+  realized: number,
+  transferId: string | null,
+): PlanData {
   return {
     kind,
     date: atTime(input.date),
@@ -397,6 +422,7 @@ function tradeDocData(kind: TradeKind, input: TradeInput, realized: number): Pla
     price: input.price,
     amount: input.amount,
     realized,
+    transferId,
     createdAt: serverTime(),
   };
 }
@@ -462,7 +488,7 @@ export function planAddHolding(
         {
           kind: "set",
           path: tradePath(ledgerId, holdingId, ids.tradeId),
-          data: tradeDocData("buy", openingBuy, 0),
+          data: tradeDocData("buy", openingBuy, 0, cashLegId(openingBuy, ids)),
         },
       ],
     },
@@ -502,7 +528,7 @@ export function planBuy(
         {
           kind: "set",
           path: tradePath(ledgerId, holding.id, ids.tradeId),
-          data: tradeDocData("buy", input, 0),
+          data: tradeDocData("buy", input, 0, cashLegId(input, ids)),
         },
       ],
     },
@@ -537,7 +563,7 @@ export function planSell(
         {
           kind: "set",
           path: tradePath(ledgerId, holding.id, ids.tradeId),
-          data: tradeDocData("sell", input, r.realized),
+          data: tradeDocData("sell", input, r.realized, cashLegId(input, ids)),
         },
       ],
     },

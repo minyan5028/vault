@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   planAddEvent,
   planSetAutoAssign,
+  planAddHolding,
   planBuy,
   planRemoveHolding,
   planRestoreEvent,
@@ -14,6 +15,7 @@ import {
 } from "./writes";
 import type { StoredEventFields } from "../lib/ledgerEffect";
 import type { Holding } from "../domain/types";
+import type { WritePlan } from "./writePlan";
 
 const L = "ledger-1";
 const JUL = new Date(2026, 6, 15); // local, so yearMonthOf gives "2026-07"
@@ -327,6 +329,116 @@ describe("planBuy / planSell", () => {
     expect(ops[1]).toMatchObject({ data: { kind: "sell", realized: 10_000 } });
     // Proceeds move from the holding endpoint back to cash.
     expect(ops[3]).toMatchObject({ data: { netFlow: { "hold-1": inc(-60_000), cash: inc(60_000) } } });
+  });
+});
+
+describe("a trade knows its cash leg", () => {
+  const holding: Holding = {
+    id: "hold-1",
+    ticker: "VT",
+    name: null,
+    class: "growth",
+    currency: "TWD",
+    cost: 100_000,
+    shares: 100_0000,
+    price: 1200,
+    pricedAt: null,
+    realizedGain: 0,
+    dividendReceived: 0,
+    dividendPerShare: 0,
+    targetPrice: null,
+    buyDate: null,
+    archived: false,
+    sortOrder: 0,
+  };
+  const buy = { shares: 10_0000, price: 1300, amount: 13_000, date: JUL };
+
+  const tradeDoc = (ops: WritePlan["ops"]) => {
+    const op = ops.find((o) => o.path.includes("trades"));
+    if (!op || op.kind === "delete") throw new Error("no trade document in the plan");
+    return op.data as Record<string, unknown>;
+  };
+
+  it("names the transfer a buy paid through", () => {
+    const { ops } = planBuy(L, holding, { ...buy, cashAccountId: "cash" }, "uid-1", {
+      tradeId: "trade-1",
+      transferId: "tx-1",
+    });
+    expect(tradeDoc(ops).transferId).toBe("tx-1");
+  });
+
+  it("names the transfer a sell's proceeds landed in", () => {
+    const { ops } = planSell(
+      L,
+      holding,
+      { shares: 50_0000, price: 1200, amount: 60_000, date: JUL, cashAccountId: "cash" },
+      "uid-1",
+      { tradeId: "trade-1", transferId: "tx-1" },
+    );
+    expect(tradeDoc(ops).transferId).toBe("tx-1");
+  });
+
+  it("records null — not a missing field — for a trade deliberately kept off-cash", () => {
+    const { ops } = planBuy(L, holding, { ...buy, cashAccountId: null }, "uid-1", {
+      tradeId: "trade-1",
+    });
+    const data = tradeDoc(ops);
+    expect(data.transferId).toBeNull();
+    expect("transferId" in data).toBe(true);
+  });
+
+  it("records null when an id was allocated but no cash account chosen", () => {
+    const { ops } = planBuy(L, holding, { ...buy, cashAccountId: null }, "uid-1", {
+      tradeId: "trade-1",
+      transferId: "tx-unused",
+    });
+    expect(tradeDoc(ops).transferId).toBeNull();
+  });
+
+  it("names the funding transfer on a new holding's opening buy", () => {
+    const { ops } = planAddHolding(
+      L,
+      "hold-2",
+      {
+        ticker: "VOO",
+        name: null,
+        class: "growth",
+        currency: "TWD",
+        cost: 13_000,
+        shares: 10_0000,
+        price: 1300,
+        targetPrice: null,
+        dividendPerShare: 0,
+        buyDate: JUL,
+        fundingAccountId: "cash",
+      },
+      "uid-1",
+      { tradeId: "trade-1", transferId: "tx-1" },
+    );
+    expect(tradeDoc(ops).transferId).toBe("tx-1");
+  });
+
+  it("records null on a standalone holding's opening buy", () => {
+    const { ops } = planAddHolding(
+      L,
+      "hold-2",
+      {
+        ticker: "VOO",
+        name: null,
+        class: "growth",
+        currency: "TWD",
+        cost: 13_000,
+        shares: 10_0000,
+        price: 1300,
+        targetPrice: null,
+        dividendPerShare: 0,
+        buyDate: JUL,
+        fundingAccountId: null,
+      },
+      "uid-1",
+      { tradeId: "trade-1" },
+    );
+    expect(tradeDoc(ops).transferId).toBeNull();
   });
 });
 

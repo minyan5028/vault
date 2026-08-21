@@ -20,16 +20,17 @@ would leave the owner stuck on exactly the trades most likely to be wrong.
 
 **Blocked by:** nothing.
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] A buy or sell recorded with a cash account stores that transfer's id on the
+- [x] A buy or sell recorded with a cash account stores that transfer's id on the
       trade
-- [ ] A trade recorded without a cash leg stores null, distinguishably from a
+- [x] A trade recorded without a cash leg stores null, distinguishably from a
       legacy trade whose link is unknown
-- [ ] The backfill matches unambiguous legacy trades to their legs and reports
+- [x] The backfill matches unambiguous legacy trades to their legs and reports
       every ambiguous one by name in the dry run
-- [ ] The dry run writes nothing and prints the exact command to commit
-- [ ] `holdingRepo.remove` still tears down a whole holding correctly, including
+- [x] The dry run writes nothing and prints the exact command to commit
+- [x] `holdingRepo.remove` still tears down a whole holding correctly, including
       trades whose link is unknown
-- [ ] The write-plan tests cover a trade with a leg, without a leg, and with an
-      unknown link
+- [x] The write-plan tests cover a trade with a leg, without a leg, and with an
+      unknown link — the unknown-link case is asserted in 03, where it is the
+      edit path that has to tell the three states apart

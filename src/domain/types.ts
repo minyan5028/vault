@@ -247,9 +247,13 @@ export interface Holding {
 export type TradeKind = "buy" | "sell";
 
 /**
- * One recorded buy or sell against a holding, kept as an append-only log at
- * `ledgers/{id}/holdings/{hid}/trades/{tid}` for faithful history. The running
- * shares/cost/realizedGain on the Holding are the aggregate of these.
+ * One recorded buy or sell against a holding, at
+ * `ledgers/{id}/holdings/{hid}/trades/{tid}`.
+ *
+ * Trades own the event axis of a position (ADR-0010): the Holding's `cost` and
+ * `realizedGain` are a fold over this log, and a trade is correctable and
+ * soft-deletable like any other Financial Event. `shares` on the Holding is
+ * not folded from here — that belongs to the snapshots.
  */
 export interface Trade {
   id: string;
@@ -263,6 +267,18 @@ export interface Trade {
   amount: number;
   /** Realized gain for a sell (×100); 0 for a buy. */
   realized: number;
+  /**
+   * The cash leg this trade moved money through — three distinct states:
+   * a transaction id (the leg travels with the trade through edits and
+   * deletes), `null` (recorded deliberately with no cash leg), or **absent**
+   * (a legacy trade written before the link existed; a leg may well exist but
+   * cannot be attributed to this trade — see `scripts/backfill_trade_legs.mjs`).
+   */
+  transferId?: string | null;
+  /** True when this trade is soft-deleted (ADR-0004): excluded from the fold,
+   *  its cash leg reversed with it. Absent on trades written before deletion
+   *  existed, which is the same as not deleted. */
+  deletedAt?: Date | null;
 }
 
 /** One valuation entry within a snapshot: a holding's price + share count then. */
