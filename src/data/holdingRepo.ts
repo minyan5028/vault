@@ -254,11 +254,25 @@ export const holdingRepo = {
     return commitTrade(planDeleteTrade(ledgerId, holdingId, ctx, tradeId, leg));
   },
 
-  /** Live trade log for one holding, newest first. */
+  /**
+   * Live trade log for one holding, newest first.
+   *
+   * Soft-deleted trades are filtered out here rather than in the query: a
+   * `where("deletedAt", "==", null)` would also drop every trade written before
+   * the field existed, since Firestore cannot match a missing field. Deletion is
+   * rare and a holding's log is small, so filtering client-side costs nothing
+   * and cannot silently hide history (ADR-0004).
+   */
   subscribeTrades(ledgerId: string, holdingId: string, cb: (trades: Trade[]) => void): Unsubscribe {
     return onSnapshot(
       tradesCol(ledgerId, holdingId),
-      (snap) => cb(snap.docs.map(toTrade).sort((a, b) => b.date.getTime() - a.date.getTime())),
+      (snap) =>
+        cb(
+          snap.docs
+            .map(toTrade)
+            .filter((t) => !t.deletedAt)
+            .sort((a, b) => b.date.getTime() - a.date.getTime()),
+        ),
       (e) => console.error("trades", e),
     );
   },
