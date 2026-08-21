@@ -574,6 +574,9 @@ function heldSharesContribution(
  *
  * `buyDate` is written here too — a cache of the earliest surviving buy, so the
  * date on the holding and the date in the log can never again disagree.
+ *
+ * `observed` carries the valuation fields a *new* trade also brings (its price,
+ * on its day), folded into the same document write rather than a second one.
  */
 function planFold(
   ledgerId: string,
@@ -581,12 +584,14 @@ function planFold(
   log: readonly Trade[],
   fold: ReplayedPosition,
   sharesDelta: number,
+  observed?: PlanData,
 ): WritePlan {
   const opened = openingBuyDate(log);
   const data: PlanData = {
     cost: fold.cost,
     realizedGain: fold.realizedGain,
     buyDate: opened ? atTime(opened) : null,
+    ...observed,
   };
   if (sharesDelta !== 0) data.shares = incrementBy(sharesDelta);
   return { ops: [{ kind: "update", path: holdingPath(ledgerId, holdingId), data }] };
@@ -655,21 +660,19 @@ function planAddTrade(
   return {
     ok: true,
     plan: concatPlans(
-      planFold(ledgerId, holding.id, log, fold, heldSharesContribution(added, ctx.latestSnapshot)),
+      // A trade is also a price observation on the day it happened, so a new one
+      // refreshes the displayed price — unlike a correction to an old one, which
+      // must not.
+      planFold(ledgerId, holding.id, log, fold, heldSharesContribution(added, ctx.latestSnapshot), {
+        price: input.price,
+        pricedAt: atTime(input.date),
+      }),
       {
         ops: [
           {
             kind: "set",
             path: tradePath(ledgerId, holding.id, ids.tradeId),
-            // A trade is also a price observation on the day it happened, so a
-            // new one refreshes the displayed price — unlike a correction to an
-            // old one, which must not.
             data: tradeDocData(kind, input, realized, cashLegId(input, ids)),
-          },
-          {
-            kind: "update",
-            path: holdingPath(ledgerId, holding.id),
-            data: { price: input.price, pricedAt: atTime(input.date) },
           },
         ],
       },

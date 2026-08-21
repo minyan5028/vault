@@ -304,17 +304,15 @@ describe("planBuy / planSell", () => {
         cost: 113_000,
         realizedGain: 0,
         buyDate: at(new Date(2026, 0, 5)),
+        // A new trade is also a price observation for its day, folded into the
+        // same document write rather than a second one.
+        price: 1300,
+        pricedAt: at(JUL),
         shares: inc(10_0000),
       },
     });
     expect(ops[1]).toMatchObject({ path: ["ledgers", L, "holdings", "hold-1", "trades", "trade-1"] });
-    // A new trade is also a price observation for its day.
-    expect(ops[2]).toEqual({
-      kind: "update",
-      path: ["ledgers", L, "holdings", "hold-1"],
-      data: { price: 1300, pricedAt: at(JUL) },
-    });
-    expect(ops[4]).toMatchObject({ data: { netFlow: { cash: inc(-13_000), "hold-1": inc(13_000) } } });
+    expect(ops[3]).toMatchObject({ data: { netFlow: { cash: inc(-13_000), "hold-1": inc(13_000) } } });
   });
 
   it("records no cash leg when none was chosen", () => {
@@ -328,7 +326,7 @@ describe("planBuy / planSell", () => {
         { tradeId: "trade-1" },
       ),
     );
-    expect(ops).toHaveLength(3);
+    expect(ops).toHaveLength(2);
   });
 
   it("removes shares at average cost and banks the realized gain", () => {
@@ -347,7 +345,7 @@ describe("planBuy / planSell", () => {
       data: { cost: 50_000, realizedGain: 10_000, shares: inc(-50_0000) },
     });
     expect(ops[1]).toMatchObject({ data: { kind: "sell", realized: 10_000 } });
-    expect(ops[4]).toMatchObject({ data: { netFlow: { "hold-1": inc(-60_000), cash: inc(60_000) } } });
+    expect(ops[3]).toMatchObject({ data: { netFlow: { "hold-1": inc(-60_000), cash: inc(60_000) } } });
   });
 
   it("refuses a sell of more shares than were ever bought", () => {
