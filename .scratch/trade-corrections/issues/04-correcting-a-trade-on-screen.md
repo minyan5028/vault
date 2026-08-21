@@ -24,19 +24,26 @@ reinvested it is noise.
 
 **Blocked by:** 03 — a trade can be corrected and deleted.
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Tapping a trade row expands an edit form in place; tapping again collapses
+- [x] Tapping a trade row expands an edit form in place; tapping again collapses
       it
-- [ ] Date, shares, price and amount are editable; the cash account is not
+- [x] Date, shares, price and amount are editable; the cash account is not
       offered
-- [ ] Saving a correction updates the trade log, the cost basis and the gain
+- [x] Saving a correction updates the trade log, the cost basis and the gain
       figures without leaving the screen
-- [ ] A refused edit explains why, naming the trade that would break
-- [ ] Deleting a trade asks for confirmation, matching the existing delete
+- [x] A refused edit explains why, naming the trade that would break
+- [x] Deleting a trade asks for confirmation, matching the existing delete
       affordance
-- [ ] Traded and held shares are shown together, with the reinvested difference,
+- [x] Traded and held shares are shown together, with the reinvested difference,
       whenever they differ
-- [ ] The line is absent when they are equal
-- [ ] Both strings exist in `en` and `zh-TW`
-- [ ] No additional Firestore subscription is opened
+- [x] The line is absent when they are equal
+- [x] Both strings exist in `en` and `zh-TW`
+- [x] No additional Firestore subscription is opened
+
+## Comments
+
+Building this surfaced a gap that is not in the spec: a sell of a reinvested
+position exceeds what the trade log accounts for, and the fold refuses it. The
+sell form now checks against the traded count and says what to do, but the
+underlying decision is open — see `06-selling-a-reinvested-position.md`.

@@ -159,5 +159,10 @@
   "iconPlaceholder": "圖示",
   "signIn": "使用 Google 登入",
   "signOut": "登出",
-  "tradeRefused": "這會讓 {{date}} 的{{kind}}只剩 {{shares}} 股。請先修正那一筆。"
+  "tradeRefused": "這會讓 {{date}} 的{{kind}}只剩 {{shares}} 股。請先修正那一筆。",
+  "tradedShares": "交易",
+  "heldShares": "持有",
+  "fromReinvestment": "{{shares}} 來自再投資",
+  "cashLegNotLinked": "這筆交易沒有連到現金帳，修改不會動到金額。",
+  "notEnoughTradedShares": "交易紀錄只有 {{shares}} 股。請先把再投資的股數補記成一筆買入。"
 }

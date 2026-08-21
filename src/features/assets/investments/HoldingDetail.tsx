@@ -8,12 +8,14 @@ import {
   avgCost,
   dividendMetrics,
   estimatedDividends,
+  replayTrades,
   yieldOnCost,
 } from "../../../lib/holdings";
 import {
   holdingRepo,
   type NewHolding,
   type TradeContext,
+  type TradeEdit,
   type TradeOutcome,
   type TradeInput,
 } from "../../../data/holdingRepo";
@@ -30,6 +32,7 @@ import {
   formatShares,
   parseAmount,
   parseShares,
+  sharesInput,
 } from "../../../lib/money";
 import { BASE_CURRENCY, CLASSES, inputClass, atTarget, formatPct } from "./shared";
 import { Gain, Field, CashAccountField } from "./fields";
@@ -81,6 +84,10 @@ export function HoldingDetail({
     ? fromDateInputValue(snapshots[snapshots.length - 1].date)
     : null;
   const ctx: TradeContext = { trades, latestSnapshot };
+  // What the log says was bought, against what the broker says is held. They
+  // differ by reinvestment, which is the model rather than a discrepancy.
+  const fold = replayTrades(trades);
+  const tradedShares = fold.ok ? fold.tradedShares : null;
   const [refusal, setRefusal] = useState<string | null>(null);
 
   const now = Date.now();
@@ -141,6 +148,18 @@ export function HoldingDetail({
               {t("unrealized")} <Gain minor={v.gainBase} locale={locale} pct={v.gainPct} />
             </span>
           </div>
+
+          {tradedShares != null && tradedShares !== holding.shares && (
+            <p className="mt-1 text-xs text-slate-500">
+              {t("tradedShares")} {formatShares(tradedShares)} · {t("heldShares")}{" "}
+              {formatShares(holding.shares)}
+              <span className="ml-1 text-sky-400">
+                {t("fromReinvestment", {
+                  shares: formatShares(Math.abs(holding.shares - tradedShares)),
+                })}
+              </span>
+            </p>
+          )}
 
           {/* Buy info — cost basis, average cost, when and the review target. */}
           <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
@@ -265,6 +284,7 @@ export function HoldingDetail({
           <TradeForm
             kind={action}
             holding={holding}
+            tradedShares={tradedShares ?? holding.shares}
             accounts={accounts}
             locale={locale}
             onCancel={() => setAction("none")}
@@ -297,7 +317,17 @@ export function HoldingDetail({
           />
         )}
 
-        <TradeLog trades={trades} holding={holding} locale={locale} />
+        <TradeLog
+          trades={trades}
+          holding={holding}
+          locale={locale}
+          onEdit={async (tradeId, patch) =>
+            report(await holdingRepo.editTrade(ledgerId, holding.id, ctx, tradeId, patch))
+          }
+          onDelete={async (tradeId) =>
+            report(await holdingRepo.deleteTrade(ledgerId, holding.id, ctx, tradeId))
+          }
+        />
       </div>
     </main>
   );
@@ -476,6 +506,7 @@ function EditHoldingForm({
 function TradeForm({
   kind,
   holding,
+  tradedShares,
   accounts,
   locale,
   onSave,
@@ -483,6 +514,12 @@ function TradeForm({
 }: {
   kind: TradeKind;
   holding: Holding;
+  /** What the trade log accounts for. A sell is checked against this, not the
+   *  held count: the fold is what will accept or refuse the write, and it only
+   *  knows about shares a trade put there (ADR-0010). For a holding that has
+   *  reinvested, this is lower than what the broker reports — see the
+   *  reconciliation line on the detail screen. */
+  tradedShares: number;
   accounts: Account[];
   locale: string;
   onSave: (input: TradeInput) => void;
@@ -498,9 +535,9 @@ function TradeForm({
   const sharesMinor = parseShares(shares) ?? 0;
   const amountMinor = parseAmount(amount) ?? 0;
   const isSell = kind === "sell";
-  const valid = sharesMinor > 0 && (!isSell || sharesMinor <= holding.shares);
+  const valid = sharesMinor > 0 && (!isSell || sharesMinor <= tradedShares);
   const preview = isSell
-    ? applySell({ shares: holding.shares, cost: holding.cost }, sharesMinor, amountMinor).realized
+    ? applySell({ shares: tradedShares, cost: holding.cost }, sharesMinor, amountMinor).realized
     : 0;
 
   return (
@@ -553,8 +590,10 @@ function TradeForm({
           {t("realizedGain")} <Gain minor={preview} currency={holding.currency} locale={locale} />
         </p>
       )}
-      {isSell && sharesMinor > holding.shares && (
-        <p className="text-right text-xs text-rose-400">{t("notEnoughShares")}</p>
+      {isSell && sharesMinor > tradedShares && (
+        <p className="text-right text-xs text-rose-400">
+          {t("notEnoughTradedShares", { shares: formatShares(tradedShares) })}
+        </p>
       )}
       <div className="flex justify-end gap-3 pt-1 text-sm">
         <button type="button" onClick={onCancel} className="text-slate-400">
@@ -585,12 +624,17 @@ function TradeLog({
   trades,
   holding,
   locale,
+  onEdit,
+  onDelete,
 }: {
   trades: Trade[];
   holding: Holding;
   locale: string;
+  onEdit: (tradeId: string, patch: TradeEdit) => Promise<boolean>;
+  onDelete: (tradeId: string) => Promise<boolean>;
 }) {
   const { t } = useTranslation();
+  const [editing, setEditing] = useState<string | null>(null);
   if (trades.length === 0) return null;
   const ordered = [...trades].sort((a, b) => b.date.getTime() - a.date.getTime());
   return (
@@ -598,26 +642,162 @@ function TradeLog({
       <h2 className="mb-1 text-xs uppercase tracking-wide text-slate-400">{t("trades")}</h2>
       <ul className="divide-y divide-slate-800 text-sm">
         {ordered.map((tr) => (
-          <li key={tr.id} className="flex items-center gap-3 py-2">
-            <span
-              className={
-                "w-9 shrink-0 text-xs " + (tr.kind === "buy" ? "text-emerald-400" : "text-rose-400")
-              }
+          <li key={tr.id} className="py-1">
+            <button
+              type="button"
+              onClick={() => setEditing(editing === tr.id ? null : tr.id)}
+              className="flex w-full items-center gap-3 py-1 text-left"
             >
-              {tr.kind === "buy" ? t("buyShort") : t("sellShort")}
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="text-slate-300">
-                {formatShares(tr.shares)} × {formatMoney(tr.price, holding.currency, locale)}
-              </p>
-              <p className="text-xs text-slate-500">{tr.date.toLocaleDateString(locale)}</p>
-            </div>
-            <span className="tabular-nums text-slate-400">
-              {formatMoney(tr.amount, holding.currency, locale)}
-            </span>
+              <span
+                className={
+                  "w-9 shrink-0 text-xs " +
+                  (tr.kind === "buy" ? "text-emerald-400" : "text-rose-400")
+                }
+              >
+                {tr.kind === "buy" ? t("buyShort") : t("sellShort")}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-slate-300">
+                  {formatShares(tr.shares)} × {formatMoney(tr.price, holding.currency, locale)}
+                </p>
+                <p className="text-xs text-slate-500">{tr.date.toLocaleDateString(locale)}</p>
+              </div>
+              <span className="tabular-nums text-slate-400">
+                {formatMoney(tr.amount, holding.currency, locale)}
+              </span>
+            </button>
+            {editing === tr.id && (
+              <EditTradeForm
+                trade={tr}
+                onCancel={() => setEditing(null)}
+                onSave={async (patch) => {
+                  if (await onEdit(tr.id, patch)) setEditing(null);
+                }}
+                onDelete={async () => {
+                  if (await onDelete(tr.id)) setEditing(null);
+                }}
+              />
+            )}
           </li>
         ))}
       </ul>
     </section>
+  );
+}
+
+/**
+ * Correct one trade in place, or delete it.
+ *
+ * The cash account is deliberately absent: moving a trade to a different
+ * account means deleting it and recording it again (ADR-0010's scope). Everything
+ * offered here re-folds the holding's cost basis, and a correction the log
+ * cannot support comes back refused rather than clamped.
+ */
+function EditTradeForm({
+  trade,
+  onSave,
+  onDelete,
+  onCancel,
+}: {
+  trade: Trade;
+  onSave: (patch: TradeEdit) => Promise<void>;
+  onDelete: () => Promise<void>;
+  onCancel: () => void;
+}) {
+  const { t } = useTranslation();
+  const [date, setDate] = useState(toDateInputValue(trade.date));
+  const [shares, setShares] = useState(sharesInput(trade.shares));
+  const [price, setPrice] = useState(amountInput(trade.price));
+  const [amount, setAmount] = useState(amountInput(trade.amount));
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const sharesMinor = parseShares(shares) ?? 0;
+  const isSell = trade.kind === "sell";
+  const unlinked = trade.transferId === undefined;
+
+  return (
+    <div className="mb-2 space-y-2 rounded-lg bg-slate-800/40 p-3">
+      <div className="flex gap-2">
+        <Field label={t("shares")}>
+          <input
+            className={inputClass}
+            inputMode="decimal"
+            value={shares}
+            onChange={(e) => setShares(e.target.value)}
+          />
+        </Field>
+        <Field label={t("price")}>
+          <input
+            className={inputClass}
+            inputMode="decimal"
+            value={price}
+            onChange={(e) => setPrice(e.target.value)}
+          />
+        </Field>
+        <Field label={isSell ? t("proceeds") : t("cost")}>
+          <input
+            className={inputClass}
+            inputMode="decimal"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+          />
+        </Field>
+      </div>
+      <Field label={t("date")}>
+        <input
+          type="date"
+          className={inputClass}
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+        />
+      </Field>
+      {unlinked && <p className="text-xs text-amber-400/80">{t("cashLegNotLinked")}</p>}
+
+      <div className="flex items-center gap-3 pt-1 text-sm">
+        {confirmDelete ? (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              await onDelete();
+              setBusy(false);
+            }}
+            className="text-xs text-rose-400"
+          >
+            {t("confirmDelete")}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setConfirmDelete(true)}
+            className="text-xs text-slate-500"
+          >
+            {t("delete")}
+          </button>
+        )}
+        <button type="button" onClick={onCancel} className="ml-auto text-slate-400">
+          {t("cancel")}
+        </button>
+        <button
+          type="button"
+          disabled={busy || sharesMinor <= 0}
+          onClick={async () => {
+            setBusy(true);
+            await onSave({
+              date: fromDateInputValue(date),
+              shares: sharesMinor,
+              price: parseAmount(price) ?? 0,
+              amount: parseAmount(amount) ?? 0,
+            });
+            setBusy(false);
+          }}
+          className="font-medium text-emerald-400 disabled:text-slate-600"
+        >
+          {t("save")}
+        </button>
+      </div>
+    </div>
   );
 }
