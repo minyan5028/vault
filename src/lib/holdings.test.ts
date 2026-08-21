@@ -11,6 +11,7 @@ import {
   estimatedDividends,
   replayTrades,
   openingBuyDate,
+  positionAsOf,
 } from "./holdings";
 import type { HoldingClass, PortfolioSnapshot, Trade } from "../domain/types";
 
@@ -289,6 +290,58 @@ describe("replayTrades", () => {
     expect(r.realizedByTrade.has("a")).toBe(false);
   });
 
+  describe("a sell apportioned against what was really held", () => {
+    it("divides the basis by the frozen count, not by what was bought", () => {
+      // Bought 10 for 100,000; reinvestment grew it to 30; sold 20 of those 30.
+      // Two thirds of the position leaves, so two thirds of the basis leaves.
+      const r = replayTrades([
+        buy("a", JAN, 10_0000, 100_000),
+        { ...sell("b", FEB, 20_0000, 90_000), basisShares: 30_0000 },
+      ]);
+      expect(r).toMatchObject({
+        ok: true,
+        tradedShares: 10_0000,
+        cost: 33_333,
+        realizedGain: 90_000 - 66_667,
+      });
+    });
+
+    it("empties the basis when the whole position goes, over two sales", () => {
+      const r = replayTrades([
+        buy("a", JAN, 10_0000, 100_000),
+        { ...sell("b", FEB, 20_0000, 90_000), basisShares: 30_0000 },
+        { ...sell("c", MAR, 10_0000, 45_000), basisShares: 10_0000 },
+      ]);
+      expect(r).toMatchObject({ ok: true, tradedShares: 0, cost: 0 });
+    });
+
+    it("takes the whole basis when a reinvested position is closed in one go", () => {
+      const r = replayTrades([
+        buy("a", JAN, 15_0000, 100_000),
+        { ...sell("b", FEB, 15_2506, 150_000), basisShares: 15_2506 },
+      ]);
+      expect(r).toMatchObject({ ok: true, tradedShares: 0, cost: 0, realizedGain: 50_000 });
+    });
+
+    it("still refuses a sell beyond even the frozen count", () => {
+      const r = replayTrades([
+        buy("a", JAN, 10_0000, 100_000),
+        { ...sell("b", FEB, 40_0000, 90_000), basisShares: 30_0000 },
+      ]);
+      if (r.ok) throw new Error("expected a refusal");
+      expect(r.remaining).toBe(-10_0000);
+    });
+
+    it("behaves exactly as before for a sell that carries no frozen count", () => {
+      const legacy = replayTrades([buy("a", JAN, 100_0000, 100_000), sell("b", FEB, 50_0000, 60_000)]);
+      const framed = replayTrades([
+        buy("a", JAN, 100_0000, 100_000),
+        { ...sell("b", FEB, 50_0000, 60_000), basisShares: 100_0000 },
+      ]);
+      expect(legacy).toEqual(framed);
+    });
+  });
+
   it("folds an empty log to an empty position", () => {
     expect(replayTrades([])).toMatchObject({ ok: true, tradedShares: 0, cost: 0, realizedGain: 0 });
   });
@@ -324,5 +377,32 @@ describe("openingBuyDate", () => {
   it("is null when no buy survives", () => {
     expect(openingBuyDate([buy("a", JAN, { deletedAt: FEB })])).toBeNull();
     expect(openingBuyDate([])).toBeNull();
+  });
+});
+
+describe("positionAsOf", () => {
+  const t = (id: string, kind: "buy" | "sell", date: Date, shares: number, amount: number): Trade => ({
+    id,
+    kind,
+    date,
+    shares,
+    price: 0,
+    amount,
+    realized: 0,
+  });
+  const JAN = new Date(2026, 0, 10);
+  const JUN = new Date(2026, 5, 10);
+
+  it("ignores trades recorded after the date asked about", () => {
+    const log = [t("a", "buy", JAN, 10_0000, 100_000), t("b", "buy", JUN, 10_0000, 300_000)];
+    expect(positionAsOf(log, new Date(2026, 2, 1))).toMatchObject({
+      tradedShares: 10_0000,
+      cost: 100_000,
+    });
+  });
+
+  it("includes a trade on the date itself", () => {
+    const log = [t("a", "buy", JAN, 10_0000, 100_000)];
+    expect(positionAsOf(log, JAN)).toMatchObject({ tradedShares: 10_0000 });
   });
 });

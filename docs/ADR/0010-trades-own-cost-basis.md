@@ -103,6 +103,47 @@ Accepted rather than modelled: the affected figures are marked reference-only an
 excluded from net worth, and the absurd number is its own warning. Revisit by
 letting a snapshot record a split factor if this ever actually happens.
 
+## Amendment: selling more than the log accounts for
+
+The decision above left a position that had reinvested impossible to sell in
+full. The log accounts for the 15 DIS shares that were bought; the broker
+reports 15.2506; and a fold that refuses to sell shares no trade bought refuses
+the sale. Before this ADR the increment simply let it through, so the model as
+first written was a regression on a path every reinvesting holding eventually
+takes.
+
+**A sale is permitted up to whichever is larger of what the log accounts for on
+its date and what the broker says is held, and its cost is apportioned against
+that same figure.**
+
+Both halves matter. Permitting the sale without changing the denominator looked
+right only because a full exit divides by itself: selling 20 of a position of 30
+that the log records as 10 would have removed the entire basis and left the
+remaining 10 shares apparently free. The number that decides whether a sale is
+allowed has to be the number its cost is divided by.
+
+The larger of the two, because they differ in both directions. Reinvestment puts
+the broker ahead. A buy recorded before the next snapshot puts the log ahead, and
+deferring to the broker there would price the sale as if the new shares did not
+exist.
+
+**The figure is frozen onto the sell as `basisShares`.** It comes from the
+snapshots, and snapshots keep moving; recomputing it on each replay would make
+historical realized gains drift every time an unrelated trade was corrected. Held
+shares therefore influence the arithmetic once, at the moment the sale happens,
+and the fold remains a function of the trade log alone — which is what the main
+decision requires. This is the device [ADR-0002](0002-fx-locked-at-entry.md)
+already uses: the observation is locked into the event at entry rather than
+looked up again later.
+
+Sells recorded before this existed carry no `basisShares` and fall back to the
+traded count, which is what they were computed with, so no stored figure moves.
+
+The refusal survives in weakened form: a sale beyond *both* counts is still
+refused by name. An edit that strands an earlier sell is caught whenever the
+stranded quantity exceeds the held count too — and when it does not, the
+traded-versus-held line on the detail screen is where it shows.
+
 ## Rationale
 
 Cost basis is history: what the owner paid, recorded once, corrigible when

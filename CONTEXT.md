@@ -88,6 +88,9 @@ displayed average cost use.
 They are equal only for a holding that has never reinvested. A trade whose share
 count differs from the holding's is not a discrepancy.
 
+The two meet at one point: a sell is apportioned against whichever is larger, and
+that figure is frozen onto the trade so the fold never has to ask again.
+
 ## DRIP
 
 Dividends reinvested into more shares of the same Holding.

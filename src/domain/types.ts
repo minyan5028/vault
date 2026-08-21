@@ -268,6 +268,22 @@ export interface Trade {
   /** Realized gain for a sell (×100); 0 for a buy. */
   realized: number;
   /**
+   * Sells only — the share count this sale's cost was apportioned against,
+   * frozen at the moment it was recorded.
+   *
+   * A reinvesting position holds more shares than the trade log accounts for,
+   * so selling part of it has to divide the basis by what was really there, not
+   * by what was bought. That figure comes from the snapshots, and snapshots keep
+   * moving — recomputing it later would make historical realized gains drift
+   * every time an unrelated trade was corrected. Locking it onto the event is
+   * the same device ADR-0002 uses for FX: the observation influences the number
+   * once, at the moment it is true, and the log stays self-contained.
+   *
+   * Absent on buys, and on sells recorded before this existed — those fall back
+   * to the traded count, which is what they were computed with.
+   */
+  basisShares?: number;
+  /**
    * The cash leg this trade moved money through — three distinct states:
    * a transaction id (the leg travels with the trade through edits and
    * deletes), `null` (recorded deliberately with no cash leg), or **absent**

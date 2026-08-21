@@ -316,10 +316,15 @@ export function replayTrades(trades: readonly Trade[]): ReplayResult {
       position = applyBuy(position, t.shares, t.amount);
       continue;
     }
-    if (t.shares > position.shares) {
-      return { ok: false, blockedBy: t, remaining: position.shares - t.shares };
+    // A sell may carry the share count it was apportioned against (see
+    // `basisShares`): the position really was that size, even though the log
+    // only accounts for the part that was bought. Reinvested shares dilute the
+    // basis rather than adding to it, so the cost rides along unchanged.
+    const held = Math.max(position.shares, t.basisShares ?? 0);
+    if (t.shares > held) {
+      return { ok: false, blockedBy: t, remaining: held - t.shares };
     }
-    const r = applySell(position, t.shares, t.amount);
+    const r = applySell({ shares: held, cost: position.cost }, t.shares, t.amount);
     position = { shares: r.shares, cost: r.cost };
     realizedGain += r.realized;
     realizedByTrade.set(t.id, r.realized);
@@ -353,4 +358,17 @@ export function openingBuyDate(trades: readonly Trade[]): Date | null {
     if (!earliest || t.date.getTime() < earliest.getTime()) earliest = t.date;
   }
   return earliest;
+}
+
+
+/**
+ * The position the fold will see when it reaches a trade dated `on` —
+ * everything recorded on or before that date.
+ *
+ * A backdated sell is apportioned against what was held *then*, not against
+ * today, so the form and the write have to measure it the same way or the
+ * realized gain shown differs from the one stored.
+ */
+export function positionAsOf(trades: readonly Trade[], on: Date): ReplayResult {
+  return replayTrades(trades.filter((t) => t.date.getTime() <= on.getTime()));
 }

@@ -1,6 +1,6 @@
 # 06 — Selling more shares than the log accounts for
 
-**Status:** needs-triage
+**Status:** resolved
 
 **Found while building 03/04.** Not in the original spec, and it is a real
 functional gap that ADR-0010 creates.
@@ -35,8 +35,30 @@ the wrong moment.
   makes the event axis depend on the valuation axis, which is the coupling
   ADR-0010 exists to remove.
 
-- [ ] Decide between (a), (b) and (c) with the owner
-- [ ] Whichever is chosen, record it as an amendment on ADR-0010 — the current
-      text does not anticipate a sell exceeding the traded count
-- [ ] If (b): the refusal from 03 needs a replacement guard, or an edit that
-      strands a sell becomes silent again
+## Answer
+
+None of the three. The owner proposed a fourth: check the sale against **both**
+counts and allow it if it satisfies either. That is better than all of (a), (b)
+and (c), and working it through produced the rule that shipped.
+
+The first attempt was to permit the sale on `max(traded, held)` while still
+dividing the cost by the traded count. The owner found the case that breaks it:
+bought 10, snapshot says 30, sell 20. Dividing by the traded count removes the
+*entire* basis for a sale of two thirds of the position, leaving the remaining
+10 shares apparently free. The full-exit case had looked right only because
+dividing by itself gives 100% either way.
+
+So both halves move together: **the number that decides whether a sale is
+allowed is the number its cost is divided by.** Larger of the two, because they
+differ in both directions — reinvestment puts the broker ahead, a buy not yet
+snapshotted puts the log ahead.
+
+That figure is then **frozen onto the sell** as `basisShares`, rather than
+recomputed on each replay, or historical realized gains would drift every time an
+unrelated trade was corrected. Held shares influence the arithmetic once, at the
+moment of sale, and the fold stays a function of the log alone — the same device
+ADR-0002 uses for FX.
+
+- [x] Decided with the owner: permit and apportion against `max(traded, held)`
+- [x] Recorded as an amendment on ADR-0010, cross-referencing ADR-0002
+- [x] The refusal survives: a sale beyond *both* counts is still refused by name

@@ -9,7 +9,12 @@
  * seam between: read → plan → execute.
  */
 import { fromDateInputValue, toDateInputValue, yearMonthOf } from "../lib/date";
-import { openingBuyDate, replayTrades, type ReplayedPosition } from "../lib/holdings";
+import {
+  openingBuyDate,
+  positionAsOf,
+  replayTrades,
+  type ReplayedPosition,
+} from "../lib/holdings";
 import {
   combineEffects,
   ledgerEffect,
@@ -415,6 +420,7 @@ function tradeDocData(
   input: TradeInput,
   realized: number,
   transferId: string | null,
+  basisShares?: number,
 ): PlanData {
   return {
     kind,
@@ -424,6 +430,8 @@ function tradeDocData(
     amount: input.amount,
     realized,
     transferId,
+    // Sells only — the denominator, locked at the moment it was true.
+    ...(basisShares !== undefined ? { basisShares } : {}),
     createdAt: serverTime(),
   };
 }
@@ -552,6 +560,15 @@ export interface TradeContext {
    * looked at it, and the shares would go missing from net worth.
    */
   latestSnapshot: Date | null;
+  /**
+   * What the broker says is held right now (`Holding.shares`).
+   *
+   * Used at one moment only: a sell is apportioned against the position that
+   * really existed, which for a reinvesting holding is more than the log
+   * accounts for. The figure is then frozen onto the trade (`basisShares`) and
+   * never consulted again, so the fold stays a function of the log alone.
+   */
+  heldShares: number;
 }
 
 /**
@@ -642,8 +659,22 @@ function planRealizedRewrites(
   return { ops };
 }
 
+/**
+ * The share count a sell's cost is apportioned against: whichever is larger of
+ * what the log accounts for on that date and what the broker says is held.
+ *
+ * Larger of the two, because they can differ in either direction. Reinvestment
+ * puts the broker ahead; a buy recorded before the next snapshot puts the log
+ * ahead, and taking the broker's word there would price the sale as if the new
+ * shares did not exist.
+ */
+function sellBasisShares(ctx: TradeContext, input: TradeInput): number {
+  const asOf = positionAsOf(ctx.trades, input.date);
+  return Math.max(asOf.ok ? asOf.tradedShares : 0, ctx.heldShares);
+}
+
 /** The trade a buy or sell adds, as it will read back from the log. */
-function addedTrade(kind: TradeKind, id: string, input: TradeInput): Trade {
+function addedTrade(kind: TradeKind, id: string, input: TradeInput, basisShares?: number): Trade {
   return {
     id,
     kind,
@@ -652,6 +683,7 @@ function addedTrade(kind: TradeKind, id: string, input: TradeInput): Trade {
     price: input.price,
     amount: input.amount,
     realized: 0,
+    ...(basisShares !== undefined ? { basisShares } : {}),
   };
 }
 
@@ -680,7 +712,8 @@ function planAddTrade(
   uid: string,
   ids: TradeIds,
 ): TradeWriteResult {
-  const added = addedTrade(kind, ids.tradeId, input);
+  const basisShares = kind === "sell" ? sellBasisShares(ctx, input) : undefined;
+  const added = addedTrade(kind, ids.tradeId, input, basisShares);
   const log = [...ctx.trades, added];
   const fold = replayTrades(log);
   if (!fold.ok) return fold;
@@ -702,7 +735,7 @@ function planAddTrade(
           {
             kind: "set",
             path: tradePath(ledgerId, holding.id, ids.tradeId),
-            data: tradeDocData(kind, input, realized, cashLegId(input, ids)),
+            data: tradeDocData(kind, input, realized, cashLegId(input, ids), basisShares),
           },
         ],
       },
@@ -794,6 +827,9 @@ export function planEditTrade(
 ): TradeWriteResult {
   const before = ctx.trades.find((t) => t.id === tradeId);
   if (!before) throw new Error(`trade ${tradeId} is not in the log`);
+  // `basisShares` rides through untouched: it records how big the position was
+  // when the sale happened, which correcting the figures does not change. A
+  // correction that outgrows it is refused by the fold, as it should be.
   const after: Trade = { ...before, ...patch };
   const log = ctx.trades.map((t) => (t.id === tradeId ? after : t));
   const fold = replayTrades(log);

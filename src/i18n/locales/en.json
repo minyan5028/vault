@@ -164,5 +164,5 @@
   "heldShares": "held",
   "fromReinvestment": "{{shares}} from reinvestment",
   "cashLegNotLinked": "This trade's cash leg is not linked, so editing it moves no money.",
-  "notEnoughTradedShares": "The trade log only accounts for {{shares}} shares. Record the reinvested ones as a buy first."
+  "notEnoughTradedShares": "More than the {{shares}} shares on record."
 }

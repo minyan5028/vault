@@ -280,7 +280,7 @@ describe("planBuy / planSell", () => {
     amount: 100_000,
     realized: 0,
   };
-  const ctx = { trades: [opening], latestSnapshot: null };
+  const ctx = { trades: [opening], latestSnapshot: null, heldShares: 100_0000 };
   const ok = (r: TradeWriteResult) => {
     if (!r.ok) throw new Error("expected a plan, got a refusal");
     return r.plan.ops;
@@ -410,7 +410,7 @@ describe("planBuy / planSell", () => {
 
 describe("a trade knows its cash leg", () => {
   const holding = { id: "hold-1", ticker: "VT", currency: "TWD", pricedAt: null };
-  const ctx = { trades: [] as Trade[], latestSnapshot: null };
+  const ctx = { trades: [] as Trade[], latestSnapshot: null, heldShares: 0 };
   const buy = { shares: 10_0000, price: 1300, amount: 13_000, date: JUL };
 
   const tradeDoc = (r: TradeWriteResult) => {
@@ -447,6 +447,7 @@ describe("a trade knows its cash leg", () => {
         },
       ],
       latestSnapshot: null,
+      heldShares: 100_0000,
     };
     const r = planSell(
       L,
@@ -523,6 +524,130 @@ describe("a trade knows its cash leg", () => {
   });
 });
 
+describe("selling a position the log only partly accounts for", () => {
+  const holding = { id: "hold-1", ticker: "DIS", currency: "USD", pricedAt: null };
+  // Bought 15; reinvestment grew the broker's count to 15.2506.
+  const opening: Trade = {
+    id: "trade-0",
+    kind: "buy",
+    date: new Date(2026, 0, 5),
+    shares: 15_0000,
+    price: 8800,
+    amount: 132_000,
+    realized: 0,
+  };
+  const ok = (r: TradeWriteResult) => {
+    if (!r.ok) throw new Error("expected a plan, got a refusal");
+    return r.plan.ops;
+  };
+  const tradeDoc = (ops: WritePlan["ops"]) => {
+    const op = ops.find((o) => o.path.includes("trades"));
+    if (!op || op.kind === "delete") throw new Error("no trade document");
+    return op.data as Record<string, unknown>;
+  };
+
+  it("closes a reinvested position, taking the whole basis with it", () => {
+    const ops = ok(
+      planSell(
+        L,
+        holding,
+        { trades: [opening], latestSnapshot: null, heldShares: 15_2506 },
+        { shares: 15_2506, price: 10_000, amount: 152_506, date: JUL, cashAccountId: null },
+        "uid-1",
+        { tradeId: "trade-1" },
+      ),
+    );
+    expect(tradeDoc(ops).basisShares).toBe(15_2506);
+    expect(ops[0]).toMatchObject({ data: { cost: 0, realizedGain: 152_506 - 132_000 } });
+  });
+
+  it("apportions a partial sale against what was really held, not what was bought", () => {
+    // Bought 10 for 100,000, reinvested up to 30, sold 20 — two thirds of the
+    // position, so two thirds of the basis.
+    const bought10: Trade = { ...opening, shares: 10_0000, amount: 100_000 };
+    const ops = ok(
+      planSell(
+        L,
+        holding,
+        { trades: [bought10], latestSnapshot: null, heldShares: 30_0000 },
+        { shares: 20_0000, price: 4_500, amount: 90_000, date: JUL, cashAccountId: null },
+        "uid-1",
+        { tradeId: "trade-1" },
+      ),
+    );
+    expect(tradeDoc(ops).basisShares).toBe(30_0000);
+    expect(ops[0]).toMatchObject({ data: { cost: 33_333, realizedGain: 90_000 - 66_667 } });
+  });
+
+  it("takes the log's word when a recent buy outruns the last snapshot", () => {
+    const ops = ok(
+      planSell(
+        L,
+        holding,
+        { trades: [opening], latestSnapshot: null, heldShares: 5_0000 },
+        { shares: 15_0000, price: 10_000, amount: 150_000, date: JUL, cashAccountId: null },
+        "uid-1",
+        { tradeId: "trade-1" },
+      ),
+    );
+    expect(tradeDoc(ops).basisShares).toBe(15_0000);
+  });
+
+  it("still refuses a sale beyond both counts", () => {
+    const r = planSell(
+      L,
+      holding,
+      { trades: [opening], latestSnapshot: null, heldShares: 15_2506 },
+      { shares: 40_0000, price: 10_000, amount: 400_000, date: JUL, cashAccountId: null },
+      "uid-1",
+      { tradeId: "trade-1" },
+    );
+    if (r.ok) throw new Error("expected a refusal");
+    expect(r.remaining).toBe(15_2506 - 40_0000);
+  });
+
+  it("records no denominator on a buy — it means nothing there", () => {
+    const ops = ok(
+      planBuy(
+        L,
+        holding,
+        { trades: [opening], latestSnapshot: null, heldShares: 15_2506 },
+        { shares: 1_0000, price: 10_000, amount: 10_000, date: JUL, cashAccountId: null },
+        "uid-1",
+        { tradeId: "trade-1" },
+      ),
+    );
+    expect("basisShares" in tradeDoc(ops)).toBe(false);
+  });
+
+  it("keeps a sell's frozen denominator when its figures are corrected", () => {
+    const sold: Trade = {
+      id: "t-sell",
+      kind: "sell",
+      date: new Date(2026, 1, 10),
+      shares: 20_0000,
+      price: 4_500,
+      amount: 90_000,
+      realized: 23_333,
+      basisShares: 30_0000,
+    };
+    const bought10: Trade = { ...opening, shares: 10_0000, amount: 100_000 };
+    const ops = ok(
+      planEditTrade(
+        L,
+        "hold-1",
+        { trades: [bought10, sold], latestSnapshot: null, heldShares: 10_0000 },
+        "t-sell",
+        { amount: 120_000 },
+        null,
+      ),
+    );
+    // Apportioned against 30 still — the position was that size when it sold,
+    // and today's lower held count does not rewrite that history.
+    expect(ops[0]).toMatchObject({ data: { cost: 33_333, realizedGain: 120_000 - 66_667 } });
+  });
+});
+
 describe("planEditTrade / planDeleteTrade", () => {
   const H = "hold-1";
   const JAN = new Date(2026, 0, 10);
@@ -587,7 +712,7 @@ describe("planEditTrade / planDeleteTrade", () => {
       planEditTrade(
         L,
         H,
-        { trades: [openingBuy], latestSnapshot: null },
+        { trades: [openingBuy], latestSnapshot: null, heldShares: 100_0000 },
         "t-buy",
         { amount: 130_000 },
         buyLeg,
@@ -603,7 +728,7 @@ describe("planEditTrade / planDeleteTrade", () => {
       planEditTrade(
         L,
         H,
-        { trades: [openingBuy, laterSell], latestSnapshot: null },
+        { trades: [openingBuy, laterSell], latestSnapshot: null, heldShares: 100_0000 },
         "t-buy",
         { amount: 200_000 },
         buyLeg,
@@ -618,7 +743,7 @@ describe("planEditTrade / planDeleteTrade", () => {
       planEditTrade(
         L,
         H,
-        { trades: [openingBuy], latestSnapshot: null },
+        { trades: [openingBuy], latestSnapshot: null, heldShares: 100_0000 },
         "t-buy",
         { date: MAR, shares: 90_0000, price: 1100, amount: 99_000 },
         buyLeg,
@@ -639,7 +764,7 @@ describe("planEditTrade / planDeleteTrade", () => {
       planEditTrade(
         L,
         H,
-        { trades: [openingBuy], latestSnapshot: null },
+        { trades: [openingBuy], latestSnapshot: null, heldShares: 100_0000 },
         "t-buy",
         { price: 9999 },
         buyLeg,
@@ -655,7 +780,7 @@ describe("planEditTrade / planDeleteTrade", () => {
         planEditTrade(
           L,
           H,
-          { trades: [openingBuy], latestSnapshot: new Date(2026, 0, 1) },
+          { trades: [openingBuy], latestSnapshot: new Date(2026, 0, 1), heldShares: 100_0000 },
           "t-buy",
           { shares: 90_0000 },
           buyLeg,
@@ -669,7 +794,7 @@ describe("planEditTrade / planDeleteTrade", () => {
         planEditTrade(
           L,
           H,
-          { trades: [openingBuy], latestSnapshot: FEB },
+          { trades: [openingBuy], latestSnapshot: FEB, heldShares: 100_0000 },
           "t-buy",
           { shares: 90_0000 },
           buyLeg,
@@ -683,7 +808,7 @@ describe("planEditTrade / planDeleteTrade", () => {
         planEditTrade(
           L,
           H,
-          { trades: [openingBuy], latestSnapshot: JAN },
+          { trades: [openingBuy], latestSnapshot: JAN, heldShares: 100_0000 },
           "t-buy",
           { shares: 90_0000 },
           buyLeg,
@@ -699,7 +824,7 @@ describe("planEditTrade / planDeleteTrade", () => {
         planEditTrade(
           L,
           H,
-          { trades: [openingBuy], latestSnapshot: FEB },
+          { trades: [openingBuy], latestSnapshot: FEB, heldShares: 100_0000 },
           "t-buy",
           { date: MAR },
           buyLeg,
@@ -714,7 +839,7 @@ describe("planEditTrade / planDeleteTrade", () => {
       planEditTrade(
         L,
         H,
-        { trades: [openingBuy], latestSnapshot: null },
+        { trades: [openingBuy], latestSnapshot: null, heldShares: 100_0000 },
         "t-buy",
         { amount: 130_000, date: MAR },
         buyLeg,
@@ -734,7 +859,7 @@ describe("planEditTrade / planDeleteTrade", () => {
       planEditTrade(
         L,
         H,
-        { trades: [legacy], latestSnapshot: null },
+        { trades: [legacy], latestSnapshot: null, heldShares: 100_0000 },
         "t-buy",
         { amount: 130_000 },
         null,
@@ -748,7 +873,7 @@ describe("planEditTrade / planDeleteTrade", () => {
     const r = planEditTrade(
       L,
       H,
-      { trades: [openingBuy, laterSell], latestSnapshot: null },
+      { trades: [openingBuy, laterSell], latestSnapshot: null, heldShares: 100_0000 },
       "t-buy",
       { shares: 10_0000 },
       buyLeg,
@@ -761,7 +886,7 @@ describe("planEditTrade / planDeleteTrade", () => {
 
   it("soft-deletes a trade rather than removing the document", () => {
     const ops = ok(
-      planDeleteTrade(L, H, { trades: [openingBuy, laterSell], latestSnapshot: null }, "t-sell",
+      planDeleteTrade(L, H, { trades: [openingBuy, laterSell], latestSnapshot: null, heldShares: 100_0000 }, "t-sell",
         leg("tx-sell", 60_000, H, "cash")),
     );
     expect(opAt(ops, tradePath("t-sell"))).toEqual({
@@ -773,7 +898,7 @@ describe("planEditTrade / planDeleteTrade", () => {
 
   it("drops a deleted trade from the fold and reverses its cash leg exactly once", () => {
     const ops = ok(
-      planDeleteTrade(L, H, { trades: [openingBuy, laterSell], latestSnapshot: null }, "t-sell",
+      planDeleteTrade(L, H, { trades: [openingBuy, laterSell], latestSnapshot: null, heldShares: 100_0000 }, "t-sell",
         leg("tx-sell", 60_000, H, "cash")),
     );
     // Back to the whole opening position, with nothing realized.
@@ -792,7 +917,7 @@ describe("planEditTrade / planDeleteTrade", () => {
       planDeleteTrade(
         L,
         H,
-        { trades: [openingBuy], latestSnapshot: new Date(2026, 0, 1) },
+        { trades: [openingBuy], latestSnapshot: new Date(2026, 0, 1), heldShares: 100_0000 },
         "t-buy",
         buyLeg,
       ),
@@ -804,7 +929,7 @@ describe("planEditTrade / planDeleteTrade", () => {
     const r = planDeleteTrade(
       L,
       H,
-      { trades: [openingBuy, laterSell], latestSnapshot: null },
+      { trades: [openingBuy, laterSell], latestSnapshot: null, heldShares: 100_0000 },
       "t-buy",
       buyLeg,
     );
@@ -818,7 +943,7 @@ describe("planEditTrade / planDeleteTrade", () => {
         planEditTrade(
           L,
           H,
-          { trades: [openingBuy], latestSnapshot: null },
+          { trades: [openingBuy], latestSnapshot: null, heldShares: 100_0000 },
           "t-buy",
           { date: MAR },
           buyLeg,
@@ -833,7 +958,7 @@ describe("planEditTrade / planDeleteTrade", () => {
         planEditTrade(
           L,
           H,
-          { trades: [openingBuy, later], latestSnapshot: null },
+          { trades: [openingBuy, later], latestSnapshot: null, heldShares: 100_0000 },
           "t-buy-2",
           { amount: 5_000 },
           null,
@@ -848,7 +973,7 @@ describe("planEditTrade / planDeleteTrade", () => {
         planDeleteTrade(
           L,
           H,
-          { trades: [openingBuy, later], latestSnapshot: null },
+          { trades: [openingBuy, later], latestSnapshot: null, heldShares: 100_0000 },
           "t-buy",
           buyLeg,
         ),
@@ -858,7 +983,7 @@ describe("planEditTrade / planDeleteTrade", () => {
 
     it("is null when no buy survives", () => {
       const ops = ok(
-        planDeleteTrade(L, H, { trades: [openingBuy], latestSnapshot: null }, "t-buy", buyLeg),
+        planDeleteTrade(L, H, { trades: [openingBuy], latestSnapshot: null, heldShares: 100_0000 }, "t-buy", buyLeg),
       );
       expect(holdingOp(ops).buyDate).toBeNull();
     });
@@ -868,7 +993,7 @@ describe("planEditTrade / planDeleteTrade", () => {
         planBuy(
           L,
           { id: H, ticker: "VT", currency: "TWD", pricedAt: null },
-          { trades: [openingBuy], latestSnapshot: null },
+          { trades: [openingBuy], latestSnapshot: null, heldShares: 100_0000 },
           { shares: 10_0000, price: 900, amount: 9_000, date: new Date(2025, 11, 1), cashAccountId: null },
           "uid-1",
           { tradeId: "t-new" },
@@ -885,7 +1010,7 @@ describe("planEditTrade / planDeleteTrade", () => {
       planEditTrade(
         L,
         H,
-        { trades: [openingBuy, laterSell], latestSnapshot: null },
+        { trades: [openingBuy, laterSell], latestSnapshot: null, heldShares: 100_0000 },
         "t-sell",
         {},
         null,

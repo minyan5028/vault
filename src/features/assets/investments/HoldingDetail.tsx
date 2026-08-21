@@ -8,6 +8,7 @@ import {
   avgCost,
   dividendMetrics,
   estimatedDividends,
+  positionAsOf,
   replayTrades,
   yieldOnCost,
 } from "../../../lib/holdings";
@@ -94,7 +95,7 @@ export function HoldingDetail({
   const latestSnapshot = lastPriced ? fromDateInputValue(lastPriced.date) : null;
   const ready = trades !== null;
   const log = trades ?? [];
-  const ctx: TradeContext = { trades: log, latestSnapshot };
+  const ctx: TradeContext = { trades: log, latestSnapshot, heldShares: holding.shares };
   // What the log says was bought, against what the broker says is held. They
   // differ by reinvestment, which is the model rather than a discrepancy.
   const fold = replayTrades(log);
@@ -297,6 +298,7 @@ export function HoldingDetail({
             kind={action}
             holding={holding}
             trades={log}
+            heldShares={holding.shares}
             accounts={accounts}
             locale={locale}
             onCancel={() => setAction("none")}
@@ -519,6 +521,7 @@ function TradeForm({
   kind,
   holding,
   trades,
+  heldShares,
   accounts,
   locale,
   onSave,
@@ -533,6 +536,10 @@ function TradeForm({
    *  put there (ADR-0010), which for a reinvesting holding is fewer than the
    *  broker reports. See the reconciliation line on the detail screen. */
   trades: readonly Trade[];
+  /** What the broker says is held. A reinvesting position can be sold down
+   *  beyond what the log accounts for, and the sale is apportioned against this
+   *  — the same figure the write freezes onto the trade. */
+  heldShares: number;
   accounts: Account[];
   locale: string;
   onSave: (input: TradeInput) => void;
@@ -551,9 +558,10 @@ function TradeForm({
   // The position the fold will see when it reaches this trade: everything dated
   // on or before it. A backdated sell is measured against what was held then,
   // not against today.
-  const on = fromDateInputValue(date).getTime();
-  const asOf = replayTrades(trades.filter((t) => t.date.getTime() <= on));
-  const available = asOf.ok ? asOf.tradedShares : 0;
+  const asOf = positionAsOf(trades, fromDateInputValue(date));
+  // The denominator the write will freeze onto this sale: the larger of what
+  // the log accounts for on that date and what the broker says is held.
+  const available = Math.max(asOf.ok ? asOf.tradedShares : 0, heldShares);
   const valid = sharesMinor > 0 && (!isSell || sharesMinor <= available);
   const preview =
     isSell && asOf.ok
