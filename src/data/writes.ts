@@ -8,7 +8,7 @@
  * unit test. `firestoreExec` is the other half, and the repos are the thin
  * seam between: read → plan → execute.
  */
-import { yearMonthOf } from "../lib/date";
+import { fromDateInputValue, toDateInputValue, yearMonthOf } from "../lib/date";
 import { openingBuyDate, replayTrades, type ReplayedPosition } from "../lib/holdings";
 import {
   combineEffects,
@@ -454,7 +454,12 @@ export function planAddHolding(
   ids: TradeIds,
 ): WritePlan {
   const { buyDate, fundingAccountId, ...rest } = input;
-  const date = buyDate ?? new Date();
+  // With no date entered, the holding and its opening trade both take today —
+  // at local midnight, like every other trade date, so `replayOrder` stays
+  // stable for same-day trades. They must agree: `buyDate` is a cache of the
+  // opening trade now, and leaving the holding's copy null would let the next
+  // trade write stamp an arbitrary creation instant onto it.
+  const date = buyDate ?? fromDateInputValue(toDateInputValue(new Date()));
   const openingBuy: TradeInput = {
     shares: rest.shares,
     price: rest.price,
@@ -480,7 +485,7 @@ export function planAddHolding(
             dividendPerShare: rest.dividendPerShare,
             realizedGain: 0,
             dividendReceived: 0,
-            buyDate: buyDate ? atTime(buyDate) : null,
+            buyDate: atTime(date),
             pricedAt: serverTime(),
             archived: false,
             sortOrder: Date.now(),
@@ -536,7 +541,16 @@ export type TradeWriteResult =
  */
 export interface TradeContext {
   trades: readonly Trade[];
-  /** Date of the most recent portfolio snapshot, or null if never snapshotted. */
+  /**
+   * Date of the most recent snapshot **that priced this holding**, or null if it
+   * has never been in one.
+   *
+   * Not the ledger's newest snapshot: snapshots are recorded per currency group
+   * (`UpdatePricesForm`), and `planSnapshot` only touches the holdings it names,
+   * so a USD reading says nothing about a TWD holding. Using the ledger-wide
+   * date would treat a TWD buy as already counted by a snapshot that never
+   * looked at it, and the shares would go missing from net worth.
+   */
   latestSnapshot: Date | null;
 }
 
@@ -641,11 +655,26 @@ function addedTrade(kind: TradeKind, id: string, input: TradeInput): Trade {
   };
 }
 
+/**
+ * The price a new trade observed, when it is the most recent word on the
+ * subject.
+ *
+ * A trade is a genuine observation of the market on the day it happened, so
+ * recording one refreshes the displayed price. A **backdated** one must not:
+ * recording a 2024 buy that was missed — now a sanctioned workflow — would
+ * otherwise drag the holding's price back to 2024 and collapse its market value
+ * until the next snapshot.
+ */
+function observedPrice(input: TradeInput, pricedAt: Date | null): PlanData | undefined {
+  if (pricedAt && input.date.getTime() <= pricedAt.getTime()) return undefined;
+  return { price: input.price, pricedAt: atTime(input.date) };
+}
+
 /** Record a trade and re-fold the holding it belongs to. */
 function planAddTrade(
   ledgerId: string,
   kind: TradeKind,
-  holding: Pick<Holding, "id" | "ticker" | "currency">,
+  holding: Pick<Holding, "id" | "ticker" | "currency" | "pricedAt">,
   ctx: TradeContext,
   input: TradeInput,
   uid: string,
@@ -660,13 +689,14 @@ function planAddTrade(
   return {
     ok: true,
     plan: concatPlans(
-      // A trade is also a price observation on the day it happened, so a new one
-      // refreshes the displayed price — unlike a correction to an old one, which
-      // must not.
-      planFold(ledgerId, holding.id, log, fold, heldSharesContribution(added, ctx.latestSnapshot), {
-        price: input.price,
-        pricedAt: atTime(input.date),
-      }),
+      planFold(
+        ledgerId,
+        holding.id,
+        log,
+        fold,
+        heldSharesContribution(added, ctx.latestSnapshot),
+        observedPrice(input, holding.pricedAt),
+      ),
       {
         ops: [
           {
@@ -686,7 +716,7 @@ function planAddTrade(
  *  an optional cash leg. */
 export function planBuy(
   ledgerId: string,
-  holding: Pick<Holding, "id" | "ticker" | "currency">,
+  holding: Pick<Holding, "id" | "ticker" | "currency" | "pricedAt">,
   ctx: TradeContext,
   input: TradeInput,
   uid: string,
@@ -699,7 +729,7 @@ export function planBuy(
  *  cost of the moment and banks the realized gain. */
 export function planSell(
   ledgerId: string,
-  holding: Pick<Holding, "id" | "ticker" | "currency">,
+  holding: Pick<Holding, "id" | "ticker" | "currency" | "pricedAt">,
   ctx: TradeContext,
   input: TradeInput,
   uid: string,

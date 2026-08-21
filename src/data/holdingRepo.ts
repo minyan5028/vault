@@ -20,12 +20,14 @@ import {
   where,
   type DocumentData,
   type QueryDocumentSnapshot,
+  type Transaction,
   type Unsubscribe,
 } from "firebase/firestore";
 import { fromDateInputValue } from "../lib/date";
 import type { Holding, PortfolioSnapshot, SnapshotEntry, Trade } from "../domain/types";
-import { collectionRef, commitPlan, docRef, newDocId } from "./firestoreExec";
+import { collectionRef, commitPlan, commitPlanned, docRef, newDocId } from "./firestoreExec";
 import {
+  EMPTY_PLAN,
   fxPath,
   holdingPath,
   holdingsPath,
@@ -123,6 +125,33 @@ async function commitTrade(result: TradeWriteResult): Promise<TradeOutcome> {
 }
 
 /**
+ * A trade write that has to read its cash leg first, decided and committed in
+ * one Firestore transaction.
+ *
+ * The leg's stored fields are an *input* to the plan — `planUpdateEvent` and
+ * `planSoftDeleteEvent` reverse the effect of the document they were handed —
+ * so a stale read moves the rollups by the wrong `before` and the drift never
+ * corrects itself. The leg is editable from the Timeline and from another
+ * member's device, and an offline `getDoc` falls back to cache, so this is not
+ * hypothetical. `transactionRepo`'s own edit/delete/restore read under a
+ * transaction for exactly this reason.
+ */
+async function commitTradeWithLeg(
+  ledgerId: string,
+  trade: Trade | undefined,
+  decide: (leg: HoldingCashLeg | null) => TradeWriteResult,
+): Promise<TradeOutcome> {
+  let outcome: TradeOutcome = { ok: true };
+  await commitPlanned(async (tx) => {
+    const leg = await readCashLeg(ledgerId, trade, tx);
+    const result = decide(leg);
+    outcome = result.ok ? { ok: true } : result;
+    return { plan: result.ok ? result.plan : EMPTY_PLAN, result: undefined };
+  });
+  return outcome;
+}
+
+/**
  * The cash leg a trade names, read back for its correction.
  *
  * Null covers three cases that all mean "move no money": the trade names no
@@ -130,9 +159,13 @@ async function commitTrade(result: TradeWriteResult): Promise<TradeOutcome> {
  * the `Trade` type), or the leg it names has already been deleted. Only a
  * living, named transfer is corrected alongside its trade.
  */
-async function readCashLeg(ledgerId: string, trade: Trade | undefined): Promise<HoldingCashLeg | null> {
+async function readCashLeg(
+  ledgerId: string,
+  trade: Trade | undefined,
+  tx: Transaction,
+): Promise<HoldingCashLeg | null> {
   if (!trade?.transferId) return null;
-  const snap = await getDoc(docRef(transactionPath(ledgerId, trade.transferId)));
+  const snap = await tx.get(docRef(transactionPath(ledgerId, trade.transferId)));
   const d = snap.data();
   if (!d || d.deletedAt) return null;
   return { txId: snap.id, event: asStored(d) };
@@ -232,26 +265,30 @@ export const holdingRepo = {
   },
 
   /** Correct a trade in place, moving its cash leg with it (ADR-0010). */
-  async editTrade(
+  editTrade(
     ledgerId: string,
     holdingId: string,
     ctx: TradeContext,
     tradeId: string,
     patch: TradeEdit,
   ): Promise<TradeOutcome> {
-    const leg = await readCashLeg(ledgerId, ctx.trades.find((t) => t.id === tradeId));
-    return commitTrade(planEditTrade(ledgerId, holdingId, ctx, tradeId, patch, leg));
+    const trade = ctx.trades.find((t) => t.id === tradeId);
+    return commitTradeWithLeg(ledgerId, trade, (leg) =>
+      planEditTrade(ledgerId, holdingId, ctx, tradeId, patch, leg),
+    );
   },
 
   /** Soft-delete one trade and reverse its cash leg (ADR-0004). */
-  async deleteTrade(
+  deleteTrade(
     ledgerId: string,
     holdingId: string,
     ctx: TradeContext,
     tradeId: string,
   ): Promise<TradeOutcome> {
-    const leg = await readCashLeg(ledgerId, ctx.trades.find((t) => t.id === tradeId));
-    return commitTrade(planDeleteTrade(ledgerId, holdingId, ctx, tradeId, leg));
+    const trade = ctx.trades.find((t) => t.id === tradeId);
+    return commitTradeWithLeg(ledgerId, trade, (leg) =>
+      planDeleteTrade(ledgerId, holdingId, ctx, tradeId, leg),
+    );
   },
 
   /**

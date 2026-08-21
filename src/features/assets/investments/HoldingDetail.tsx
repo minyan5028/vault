@@ -72,29 +72,40 @@ export function HoldingDetail({
 
   // Trades drive both the log and the DRIP-dividend estimate, so subscribe once
   // here and hand them down rather than re-subscribing in the log.
-  const [trades, setTrades] = useState<Trade[]>([]);
+  // null until the subscription has spoken. It matters: cost, realizedGain and
+  // buyDate are written **absolutely** from this log, so acting on a log that
+  // has not arrived yet would overwrite a real cost basis with whatever single
+  // trade was just recorded. An empty array is a claim ("no trades"); null is
+  // the absence of one.
+  const [trades, setTrades] = useState<Trade[] | null>(null);
   useEffect(() => {
-    setTrades([]);
+    setTrades(null);
     return holdingRepo.subscribeTrades(ledgerId, holding.id, setTrades);
   }, [ledgerId, holding.id]);
 
   // The fold needs the log the trade joins and where the valuation axis has got
   // to; both are already on screen, so a correction costs no extra read.
-  const latestSnapshot = snapshots.length
-    ? fromDateInputValue(snapshots[snapshots.length - 1].date)
-    : null;
-  const ctx: TradeContext = { trades, latestSnapshot };
+  //
+  // The boundary is the newest snapshot that priced **this** holding, not the
+  // ledger's newest: readings are recorded per currency group, so a USD
+  // snapshot says nothing about a TWD position, and treating it as one would
+  // drop a TWD purchase out of the held count entirely.
+  const lastPriced = [...snapshots].reverse().find((s) => s.entries[holding.id]);
+  const latestSnapshot = lastPriced ? fromDateInputValue(lastPriced.date) : null;
+  const ready = trades !== null;
+  const log = trades ?? [];
+  const ctx: TradeContext = { trades: log, latestSnapshot };
   // What the log says was bought, against what the broker says is held. They
   // differ by reinvestment, which is the model rather than a discrepancy.
-  const fold = replayTrades(trades);
-  const tradedShares = fold.ok ? fold.tradedShares : null;
+  const fold = replayTrades(log);
+  const tradedShares = ready && fold.ok ? fold.tradedShares : null;
   const [refusal, setRefusal] = useState<string | null>(null);
 
   const now = Date.now();
   const dm = holding.class === "dividend" ? dividendMetrics(holding, v.valueCur, now) : null;
   // DRIP dividends reverse-derived from snapshot share growth (see the lib fn).
   const estDiv =
-    holding.class === "dividend" ? estimatedDividends(holding.id, snapshots, trades) : 0;
+    holding.class === "dividend" ? estimatedDividends(holding.id, snapshots, log) : 0;
   const estYield = yieldOnCost(estDiv, holding.cost, holding.buyDate, now);
 
   /** Surface a refused trade write, and say whether the caller may proceed. */
@@ -259,15 +270,16 @@ export function HoldingDetail({
           <button
             type="button"
             onClick={() => setAction(action === "buy" ? "none" : "buy")}
-            className="rounded-full bg-slate-800 px-3 py-1 text-slate-200"
+            disabled={!ready}
+            className="rounded-full bg-slate-800 px-3 py-1 text-slate-200 disabled:text-slate-600"
           >
             {t("buyMore")}
           </button>
           <button
             type="button"
             onClick={() => setAction(action === "sell" ? "none" : "sell")}
-            className="rounded-full bg-slate-800 px-3 py-1 text-slate-200"
-            disabled={holding.shares <= 0}
+            className="rounded-full bg-slate-800 px-3 py-1 text-slate-200 disabled:text-slate-600"
+            disabled={!ready || holding.shares <= 0}
           >
             {t("sell")}
           </button>
@@ -284,7 +296,7 @@ export function HoldingDetail({
           <TradeForm
             kind={action}
             holding={holding}
-            tradedShares={tradedShares ?? holding.shares}
+            trades={log}
             accounts={accounts}
             locale={locale}
             onCancel={() => setAction("none")}
@@ -318,7 +330,7 @@ export function HoldingDetail({
         )}
 
         <TradeLog
-          trades={trades}
+          trades={log}
           holding={holding}
           locale={locale}
           onEdit={async (tradeId, patch) =>
@@ -506,7 +518,7 @@ function EditHoldingForm({
 function TradeForm({
   kind,
   holding,
-  tradedShares,
+  trades,
   accounts,
   locale,
   onSave,
@@ -514,12 +526,13 @@ function TradeForm({
 }: {
   kind: TradeKind;
   holding: Holding;
-  /** What the trade log accounts for. A sell is checked against this, not the
-   *  held count: the fold is what will accept or refuse the write, and it only
-   *  knows about shares a trade put there (ADR-0010). For a holding that has
-   *  reinvested, this is lower than what the broker reports — see the
-   *  reconciliation line on the detail screen. */
-  tradedShares: number;
+  /** The log this trade joins. A sell is measured against the position **as of
+   *  its own date**, because that is what the fold will do — the form has to
+   *  promise the same realized gain the write produces. It is also the traded
+   *  count rather than the held one: the fold only knows about shares a trade
+   *  put there (ADR-0010), which for a reinvesting holding is fewer than the
+   *  broker reports. See the reconciliation line on the detail screen. */
+  trades: readonly Trade[];
   accounts: Account[];
   locale: string;
   onSave: (input: TradeInput) => void;
@@ -535,10 +548,17 @@ function TradeForm({
   const sharesMinor = parseShares(shares) ?? 0;
   const amountMinor = parseAmount(amount) ?? 0;
   const isSell = kind === "sell";
-  const valid = sharesMinor > 0 && (!isSell || sharesMinor <= tradedShares);
-  const preview = isSell
-    ? applySell({ shares: tradedShares, cost: holding.cost }, sharesMinor, amountMinor).realized
-    : 0;
+  // The position the fold will see when it reaches this trade: everything dated
+  // on or before it. A backdated sell is measured against what was held then,
+  // not against today.
+  const on = fromDateInputValue(date).getTime();
+  const asOf = replayTrades(trades.filter((t) => t.date.getTime() <= on));
+  const available = asOf.ok ? asOf.tradedShares : 0;
+  const valid = sharesMinor > 0 && (!isSell || sharesMinor <= available);
+  const preview =
+    isSell && asOf.ok
+      ? applySell({ shares: available, cost: asOf.cost }, sharesMinor, amountMinor).realized
+      : 0;
 
   return (
     <div className="mt-3 space-y-2 rounded-lg bg-slate-800/40 p-3">
@@ -590,9 +610,9 @@ function TradeForm({
           {t("realizedGain")} <Gain minor={preview} currency={holding.currency} locale={locale} />
         </p>
       )}
-      {isSell && sharesMinor > tradedShares && (
+      {isSell && sharesMinor > available && (
         <p className="text-right text-xs text-rose-400">
-          {t("notEnoughTradedShares", { shares: formatShares(tradedShares) })}
+          {t("notEnoughTradedShares", { shares: formatShares(available) })}
         </p>
       )}
       <div className="flex justify-end gap-3 pt-1 text-sm">

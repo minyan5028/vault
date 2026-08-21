@@ -16,7 +16,9 @@
  * correction to the wrong transaction.
  *
  * Only trades with no `transferId` field at all are considered, so re-running
- * is safe and converges.
+ * is safe and converges. Legs already owned by a linked trade are excluded from
+ * matching before the pass begins, so a second run cannot hand the same
+ * transfer to a second trade.
  *
  * Usage: node scripts/backfill_trade_legs.mjs [--commit]
  * Without --commit it prints the plan (dry run) and writes nothing.
@@ -65,7 +67,15 @@ for (const h of holdings) {
   const ticker = h.data().ticker ?? h.id;
   const legs = legsByHolding.get(h.id) ?? [];
   const trades = (await h.ref.collection("trades").get()).docs;
-  const claimed = new Set();
+
+  // Transfers already spoken for. Seeded before matching, not as we go: a trade
+  // linked on an earlier run still owns its leg, and leaving it unclaimed would
+  // let a legacy trade with the same day and amount match it and look
+  // unambiguous — two trades sharing one transfer, so correcting either moves
+  // the same money.
+  const claimed = new Set(
+    trades.map((tr) => tr.data().transferId).filter((id) => typeof id === "string"),
+  );
 
   for (const tr of trades) {
     const d = tr.data();

@@ -269,7 +269,7 @@ describe("planRemoveHolding", () => {
 });
 
 describe("planBuy / planSell", () => {
-  const holding = { id: "hold-1", ticker: "VT", currency: "TWD" };
+  const holding = { id: "hold-1", ticker: "VT", currency: "TWD", pricedAt: null };
   // 100 shares bought for 100,000 — the log the new trade joins.
   const opening: Trade = {
     id: "trade-0",
@@ -348,6 +348,36 @@ describe("planBuy / planSell", () => {
     expect(ops[3]).toMatchObject({ data: { netFlow: { "hold-1": inc(-60_000), cash: inc(60_000) } } });
   });
 
+  it("refreshes the price, because a trade observes the market on its day", () => {
+    const ops = ok(
+      planBuy(
+        L,
+        { ...holding, pricedAt: new Date(2026, 5, 1) },
+        ctx,
+        { shares: 10_0000, price: 1300, amount: 13_000, date: JUL, cashAccountId: null },
+        "uid-1",
+        { tradeId: "trade-1" },
+      ),
+    );
+    expect(ops[0]).toMatchObject({ data: { price: 1300, pricedAt: at(JUL) } });
+  });
+
+  it("leaves the price alone for a backdated trade — recording a missed 2024 buy", () => {
+    const old = new Date(2024, 2, 1);
+    const ops = ok(
+      planBuy(
+        L,
+        { ...holding, pricedAt: new Date(2026, 7, 1) },
+        ctx,
+        { shares: 10_0000, price: 300, amount: 3_000, date: old, cashAccountId: null },
+        "uid-1",
+        { tradeId: "trade-1" },
+      ),
+    );
+    expect(ops[0]).not.toHaveProperty("data.price");
+    expect(ops[0]).not.toHaveProperty("data.pricedAt");
+  });
+
   it("refuses a sell of more shares than were ever bought", () => {
     const r = planSell(
       L,
@@ -379,7 +409,7 @@ describe("planBuy / planSell", () => {
 });
 
 describe("a trade knows its cash leg", () => {
-  const holding = { id: "hold-1", ticker: "VT", currency: "TWD" };
+  const holding = { id: "hold-1", ticker: "VT", currency: "TWD", pricedAt: null };
   const ctx = { trades: [] as Trade[], latestSnapshot: null };
   const buy = { shares: 10_0000, price: 1300, amount: 13_000, date: JUL };
 
@@ -837,7 +867,7 @@ describe("planEditTrade / planDeleteTrade", () => {
       const ops = ok(
         planBuy(
           L,
-          { id: H, ticker: "VT", currency: "TWD" },
+          { id: H, ticker: "VT", currency: "TWD", pricedAt: null },
           { trades: [openingBuy], latestSnapshot: null },
           { shares: 10_0000, price: 900, amount: 9_000, date: new Date(2025, 11, 1), cashAccountId: null },
           "uid-1",
