@@ -45,3 +45,56 @@ operations with symbolic stand-ins for Firestore's write sentinels
 The repos decide a plan (`src/data/writes.ts`, pure and tested); `firestoreExec`
 commits it. That split is what makes the write path assertable without an
 emulator — a plan can be compared with `toEqual`.
+
+## Trade
+
+One buy or sell of a **Holding**, recorded by the owner as it happened, at
+`ledgers/{id}/holdings/{hid}/trades/{tid}`.
+
+Trades are the event axis of a position: `cost` and `realizedGain` are a fold
+over the log, replayed in date order, never incrementally patched. A trade is
+editable and soft-deletable like any other Financial Event — see
+[ADR-0010](docs/ADR/0010-trades-own-cost-basis.md).
+
+A trade may have a **cash leg**: the transfer that moved the money to or from a
+cash account. The trade names it by `transferId`; the two are edited and deleted
+together.
+
+_Avoid_: transaction (that is a Financial Event), position (that is the Holding).
+
+## Portfolio Snapshot
+
+A dated reading of what the broker reports — every Holding's price and share
+count on one date, plus the FX rates used to value them. Stored at
+`ledgers/{id}/snapshots/{date}`.
+
+Snapshots are the valuation axis: they own `shares`, `price` and `pricedAt`. A
+snapshot supersedes every estimate before it, which is why a trade dated after
+the latest snapshot adjusts `shares` and a trade dated before it does not.
+
+_Avoid_: valuation, price update.
+
+## Traded Shares · Held Shares
+
+Two different quantities, kept apart deliberately.
+
+**Traded shares** is the fold over the Trade log — what the owner bought. It
+belongs to the event axis and is what the cost-basis replay divides by.
+
+**Held shares** is `Holding.shares` — what the broker says is there, grown by
+reinvestment. It belongs to the valuation axis and is what market value and the
+displayed average cost use.
+
+They are equal only for a holding that has never reinvested. A trade whose share
+count differs from the holding's is not a discrepancy.
+
+## DRIP
+
+Dividends reinvested into more shares of the same Holding.
+
+Derived, never stored: it is the share growth a Portfolio Snapshot reports that
+no Trade accounts for (`estimatedDividends` in `src/lib/holdings.ts`). No money
+enters the Ledger and no event is written, so DRIP has no record of its own —
+only a figure computed on the Holding's detail screen.
+
+_Avoid_: reinvestment trade, dividend event.

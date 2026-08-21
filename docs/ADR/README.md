@@ -15,6 +15,7 @@ change a decision, add a new ADR that supersedes the old one.
 | [0007](0007-multi-currency-accounts.md) | Multi-currency accounts | Accepted |
 | [0008](0008-expense-taxonomy-by-compressibility.md) | Expense taxonomy organized by compressibility | Accepted |
 | [0009](0009-projects-as-second-axis.md) | Projects as a second classification axis | Accepted |
+| [0010](0010-trades-own-cost-basis.md) | Trades own cost basis, snapshots own the position | Accepted |
 
 Template for each record: **Status · Context · Decision · Consequences · Rationale**.
 
