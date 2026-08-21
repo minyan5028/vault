@@ -9,11 +9,16 @@
  * the cost basis.
  *
  * Matching is on (holding, date, amount), which is everything a leg and its
- * trade share. Where two or more candidate legs fit one trade — same holding,
- * same day, same amount — the pair is ambiguous and is left alone: such a
- * trade keeps `transferId` absent, meaning "link unknown", and the app edits
- * the trade without touching any transfer. Guessing here would attach a
- * correction to the wrong transaction.
+ * trade share. Where that finds nothing, amount alone is accepted — but only
+ * when exactly one leg of that amount is still unclaimed for the holding.
+ * Correcting an opening trade's date moves it away from its transfer on
+ * purpose (the transfer keeps the date the money actually left the account), so
+ * demanding both would strand exactly the trades that had been repaired.
+ *
+ * Where two or more candidate legs fit one trade, the pair is ambiguous and is
+ * left alone: such a trade keeps `transferId` absent, meaning "link unknown",
+ * and the app edits the trade without touching any transfer. Guessing here
+ * would attach a correction to the wrong transaction.
  *
  * Only trades with no `transferId` field at all are considered, so re-running
  * is safe and converges. Legs already owned by a linked trade are excluded from
@@ -84,15 +89,23 @@ for (const h of holdings) {
       continue;
     }
     const when = d.date.toDate();
-    const fits = legs.filter(
-      (l) => !claimed.has(l.id) && l.amount === d.amount && day(l.date.toDate()) === day(when),
-    );
+    const free = legs.filter((l) => !claimed.has(l.id) && l.amount === d.amount);
+    const sameDay = free.filter((l) => day(l.date.toDate()) === day(when));
+
+    // Date and amount is the strong match. Amount alone is the fallback, taken
+    // only when exactly one leg of that amount is left unclaimed for this
+    // holding: correcting an opening trade's date deliberately moves it away
+    // from its transfer (the transfer keeps the date the money actually left),
+    // so insisting on both would strand precisely the trades that were fixed.
+    const fits = sameDay.length > 0 ? sameDay : free;
+    const weak = sameDay.length === 0 && free.length === 1;
 
     if (fits.length === 1) {
       claimed.add(fits[0].id);
       updates.push({ ref: tr.ref, transferId: fits[0].id });
       console.log(
-        `✓ ${ticker.padEnd(8)} ${d.kind.padEnd(4)} ${day(when)} ${m(d.amount).padStart(11)} → ${fits[0].id}`,
+        `${weak ? "≈" : "✓"} ${ticker.padEnd(8)} ${d.kind.padEnd(4)} ${day(when)} ${m(d.amount).padStart(11)} → ${fits[0].id}` +
+          (weak ? `  (amount only; leg dated ${day(fits[0].date.toDate())})` : ""),
       );
     } else if (fits.length === 0) {
       noCandidate++;
