@@ -7,11 +7,11 @@ import { useMonthTransactions } from "../../data/useMonthTransactions";
 import { MonthSelector } from "../../components/MonthSelector";
 import { StatCell } from "../../components/StatCell";
 import { EntryRow } from "../../components/EntryRow";
-import { LedgerSwitcher } from "../../components/LedgerSwitcher";
-import { AppLogo } from "../../components/AppLogo";
+import { PageHeader } from "../../components/PageHeader";
+import { useLedgerNav } from "../../components/ledgerNav";
 import { Pill } from "../../components/Pill";
 import type { LedgerEndpoint } from "../../lib/endpoints";
-import type { Account, Category, Project, EventType, Ledger, Transaction } from "../../domain/types";
+import type { Account, Category, Project, EventType, Transaction } from "../../domain/types";
 
 const FILTERS: ("all" | EventType)[] = ["all", "expense", "income", "transfer"];
 const BASE_CURRENCY = "TWD";
@@ -27,11 +27,6 @@ export function Timeline({
   endpoints,
   categories,
   projects,
-  ledgers,
-  invites,
-  onSelectLedger,
-  onCreateLedger,
-  onAcceptInvite,
   onEdit,
   onAddOnDate,
   onDelete,
@@ -42,11 +37,6 @@ export function Timeline({
   endpoints: ReadonlyMap<string, LedgerEndpoint>;
   categories: Category[];
   projects: Project[];
-  ledgers: Ledger[];
-  invites: Ledger[];
-  onSelectLedger: (id: string) => void;
-  onCreateLedger: (name: string) => void;
-  onAcceptInvite: (id: string) => void;
   onEdit: (tx: Transaction) => void;
   /** Tap a day heading to record another event on that day. */
   onAddOnDate: (date: Date) => void;
@@ -63,7 +53,7 @@ export function Timeline({
   const txns = useMonthTransactions(ledgerId, month);
 
   // Attribution: only meaningful in a shared ledger, and shown for others' entries.
-  const activeLedger = ledgers.find((l) => l.id === ledgerId);
+  const { active: activeLedger } = useLedgerNav();
   const shared = (activeLedger?.memberIds.length ?? 0) > 1;
   const authorNameFor = (uid: string): string | undefined => {
     if (!shared || uid === currentUid) return undefined;
@@ -100,20 +90,8 @@ export function Timeline({
 
   return (
     <main className="min-h-dvh bg-slate-900 text-slate-100">
-      <div className="mx-auto max-w-md px-4 pb-28">
-        <header className="flex items-center gap-2 py-3">
-          <AppLogo />
-          <div className="min-w-0 flex-1">
-            <LedgerSwitcher
-              ledgers={ledgers}
-              activeId={ledgerId}
-              invites={invites}
-              onSelect={onSelectLedger}
-              onCreate={onCreateLedger}
-              onAccept={onAcceptInvite}
-            />
-          </div>
-        </header>
+      <div className="mx-auto max-w-md px-4 pb-28 pt-4">
+        <PageHeader />
 
         <MonthSelector month={month} onShift={(d) => setMonth((m) => shiftMonth(m, d))} />
 

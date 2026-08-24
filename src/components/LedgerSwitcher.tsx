@@ -1,28 +1,16 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { Ledger } from "../domain/types";
+import { useLedgerNav } from "./ledgerNav";
 
-/** Header control showing the active ledger, with a menu to switch or create. */
-export function LedgerSwitcher({
-  ledgers,
-  activeId,
-  invites,
-  onSelect,
-  onCreate,
-  onAccept,
-}: {
-  ledgers: Ledger[];
-  activeId: string;
-  invites: Ledger[];
-  onSelect: (id: string) => void;
-  onCreate: (name: string) => void;
-  onAccept: (ledgerId: string) => void;
-}) {
+/** Header control showing the active ledger, with a menu to switch or create.
+ *  Reads the ledger list and the callbacks from context, so every screen can
+ *  render it with nothing. */
+export function LedgerSwitcher() {
+  const { ledgers, activeId, active, invites, onSelect, onCreate, onAccept } = useLedgerNav();
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
-  const active = ledgers.find((l) => l.id === activeId);
 
   function close() {
     setOpen(false);
@@ -41,11 +29,11 @@ export function LedgerSwitcher({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1 text-lg font-semibold tracking-tight"
+        className="flex max-w-full items-center gap-1 text-lg font-semibold tracking-tight"
       >
-        {active?.name ?? t("appName")}
-        <span className="text-xs text-slate-500">▾</span>
-        {invites.length > 0 && <span className="h-2 w-2 rounded-full bg-rose-500" />}
+        <span className="min-w-0 truncate">{active?.name ?? t("appName")}</span>
+        <span className="shrink-0 text-xs text-slate-500">▾</span>
+        {invites.length > 0 && <span className="h-2 w-2 shrink-0 rounded-full bg-rose-500" />}
       </button>
 
       {open && (

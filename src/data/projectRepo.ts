@@ -11,7 +11,6 @@ import {
   addDoc,
   collection,
   doc,
-  getDocs,
   onSnapshot,
   serverTimestamp,
   updateDoc,
@@ -57,10 +56,6 @@ function live(docs: QueryDocumentSnapshot<DocumentData>[]): Project[] {
 }
 
 export const projectRepo = {
-  async fetch(ledgerId: string): Promise<Project[]> {
-    return live((await getDocs(col(ledgerId))).docs);
-  },
-
   subscribe(ledgerId: string, cb: (projects: Project[]) => void): Unsubscribe {
     return onSnapshot(
       col(ledgerId),

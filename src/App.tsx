@@ -14,6 +14,7 @@ import { useFxAutoRefresh } from "./data/useFxAutoRefresh";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { useAmountVisibility } from "./lib/useAmountVisibility";
 import { AppNavProvider } from "./components/appNav";
+import { LedgerNavProvider } from "./components/ledgerNav";
 import { useUserLedgers } from "./data/useUserLedgers";
 import { useMyInvites } from "./data/useMyInvites";
 import { ledgerRepo } from "./data/ledgerRepo";
@@ -100,11 +101,26 @@ function AuthedApp({ user }: { user: User }) {
     if (!ledgers.some((l) => l.id === ledgerId)) setLedgerId(user.uid);
   }, [ledgers, ledgerId, user.uid]);
 
-  // Persist the active ledger and catch up its recurring transactions.
+  // Persist the active ledger.
   useEffect(() => {
     if (!ready) return;
     localStorage.setItem(activeLedgerKey(user.uid), ledgerId);
-    void materializeRecurring(ledgerId, user.uid).catch(console.error);
+  }, [ready, ledgerId, user.uid]);
+
+  // Catch up a ledger's recurring transactions the first time it becomes active
+  // this session, not on every switch. Re-running is safe — occurrences carry a
+  // deterministic id and the rule's next date is advanced past today — but it
+  // would query the rules again for nothing, and switching ledgers is now a
+  // habit rather than an event. A failed run is forgotten so a later switch
+  // retries it.
+  const caughtUp = useRef(new Set<string>());
+  useEffect(() => {
+    if (!ready || caughtUp.current.has(ledgerId)) return;
+    caughtUp.current.add(ledgerId);
+    void materializeRecurring(ledgerId, user.uid).catch((e) => {
+      caughtUp.current.delete(ledgerId);
+      console.error("materialize recurring", e);
+    });
   }, [ready, ledgerId, user.uid]);
 
   // Self-register my display info on every ledger I belong to (once, when it's
@@ -123,6 +139,14 @@ function AuthedApp({ user }: { user: User }) {
     const timer = setTimeout(() => setUndoId(null), 5000);
     return () => clearTimeout(timer);
   }, [undoId]);
+
+  // The undo toast names a transaction in the ledger it was deleted from, and
+  // unlike the editor and the account view it does not cover the header — so
+  // the switcher stays tappable for its five seconds. Restoring against another
+  // ledger finds no such document and succeeds silently, which would dismiss
+  // the toast and take the only route back to that deletion with it. Withdraw
+  // the offer instead.
+  useEffect(() => setUndoId(null), [ledgerId]);
 
   if (!ready) return <Splash />;
 
@@ -152,18 +176,30 @@ function AuthedApp({ user }: { user: User }) {
     });
   };
 
+  // Creating jumps to the Timeline because a new Ledger is empty and recording
+  // is what comes next. Accepting an invitation does not: that Ledger already
+  // has the other member's events in it, so there is no reason to take you off
+  // the screen you were on.
   const acceptInvite = (id: string) => {
     if (!user.email) return;
-    void ledgerRepo.accept(id, user.uid, user.email).then(() => {
-      setTab("timeline");
-      setLedgerId(id);
-    });
+    void ledgerRepo.accept(id, user.uid, user.email).then(() => setLedgerId(id));
   };
 
   return (
     <AppNavProvider
       value={{ reminderCount: stockReminderDue ? 1 : 0, onLogoClick: () => setTab("assets") }}
     >
+      <LedgerNavProvider
+        value={{
+          ledgers,
+          activeId: ledgerId,
+          active: activeLedger,
+          invites,
+          onSelect: setLedgerId,
+          onCreate: createLedger,
+          onAccept: acceptInvite,
+        }}
+      >
       <ErrorBoundary key={tab}>
       {tab === "timeline" && (
         <Timeline
@@ -173,11 +209,6 @@ function AuthedApp({ user }: { user: User }) {
           endpoints={endpoints}
           categories={categories}
           projects={projects}
-          ledgers={ledgers}
-          invites={invites}
-          onSelectLedger={setLedgerId}
-          onCreateLedger={createLedger}
-          onAcceptInvite={acceptInvite}
           onEdit={(tx) => setEditor({ tx })}
           onAddOnDate={(date) => setEditor({ date })}
           onDelete={(tx) => deleteTx(tx.id)}
@@ -284,6 +315,7 @@ function AuthedApp({ user }: { user: User }) {
           </button>
         </div>
       )}
+      </LedgerNavProvider>
     </AppNavProvider>
   );
 }

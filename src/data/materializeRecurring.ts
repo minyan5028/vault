@@ -11,8 +11,10 @@ function advance(date: Date, rule: RecurringRule): Date {
 
 /**
  * Generate any due transactions from active recurring rules, up to today, and
- * advance each rule's nextDate. Runs on app open (client-side catch-up — no
- * cloud scheduler needed). Idempotent via nextDate, which we persist.
+ * advance each rule's nextDate. Client-side catch-up — no cloud scheduler
+ * needed — run once per ledger per session by the caller, not on every ledger
+ * switch. Idempotent via nextDate, which we persist, so a repeat run is safe
+ * (it simply finds nothing due) rather than merely tolerable.
  */
 export async function materializeRecurring(ledgerId: string, uid: string): Promise<void> {
   const rules = await recurringRepo.fetchActive(ledgerId);

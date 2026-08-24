@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { Account, Category, Ledger } from "../../domain/types";
 import { signOutUser } from "../../auth/useAuth";
@@ -7,7 +7,7 @@ import { Recurring } from "../recurring/Recurring";
 import { Projects } from "../projects/Projects";
 import { Backup } from "../backup/Backup";
 import { LedgerSettings } from "./LedgerSettings";
-import { AppLogo } from "../../components/AppLogo";
+import { PageHeader } from "../../components/PageHeader";
 
 type Sub = "catalog" | "recurring" | "projects" | "backup" | "ledger" | null;
 
@@ -36,6 +36,11 @@ export function Settings({
 }) {
   const { t, i18n } = useTranslation();
   const [sub, setSub] = useState<Sub>(null);
+
+  // Every sub-page acts on the active Ledger, and one of them deletes it.
+  // Switching Ledger closes them rather than letting a destructive screen
+  // change target underneath the owner.
+  useEffect(() => setSub(null), [ledgerId]);
 
   if (sub === "catalog") {
     return (
@@ -82,12 +87,9 @@ export function Settings({
   return (
     <main className="min-h-dvh bg-slate-900 text-slate-100">
       <div className="mx-auto max-w-md px-4 pb-28 pt-4">
-        <header className="mb-4 flex items-center gap-2 py-1">
-          <AppLogo />
-          <span className="text-lg font-semibold tracking-tight">{t("settings")}</span>
-        </header>
+        <PageHeader />
 
-        <ul className="divide-y divide-slate-800 overflow-hidden rounded-xl bg-slate-800/40">
+        <ul className="mt-4 divide-y divide-slate-800 overflow-hidden rounded-xl bg-slate-800/40">
           <Row label={t("catalog")} onClick={() => setSub("catalog")} chevron />
           {ledger && <Row label={t("sharing")} onClick={() => setSub("ledger")} chevron />}
           <Row label={t("recurring")} onClick={() => setSub("recurring")} chevron />

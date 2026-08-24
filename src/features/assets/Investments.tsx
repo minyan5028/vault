@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { formatMoney, formatShares } from "../../lib/money";
 import { valueHolding, portfolioTotals, toBase, rateToBase } from "../../lib/holdings";
@@ -38,6 +38,14 @@ export function Investments({
   );
   const [panel, setPanel] = useState<"none" | "add" | "update">("none");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  // A selected Holding and an open panel belong to the Ledger they were opened
+  // in — an add form left open would otherwise write into whichever Ledger you
+  // switched to.
+  useEffect(() => {
+    setSelectedId(null);
+    setPanel("none");
+  }, [ledgerId]);
 
   const selected = active.find((h) => h.id === selectedId);
   if (selected) {

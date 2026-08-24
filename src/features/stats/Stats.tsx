@@ -20,7 +20,7 @@ import { CategoryBreakdown } from "./CategoryBreakdown";
 import { ContentList } from "./ContentList";
 import { ProjectList } from "./ProjectList";
 import { DrillView } from "./DrillView";
-import { AppLogo } from "../../components/AppLogo";
+import { PageHeader } from "../../components/PageHeader";
 
 type Period = "month" | "year";
 type View = "category" | "trend" | "content" | "project";
@@ -230,6 +230,16 @@ export function Stats({
 
   // Close a drill-down if the context it was opened in changes.
   useEffect(() => setDrill(null), [period, mode, anchor, view, openProject, everydayOnly]);
+  // A drill key, an open Project and its label are ids belonging to the Ledger
+  // they were opened in. Switching Ledger would leave the heading naming a
+  // Category this Ledger does not have, over rows filtered by an id nothing
+  // here carries. The period, view and mode mean the same thing in any Ledger
+  // and deliberately survive.
+  useEffect(() => {
+    setDrill(null);
+    setOpenProject(null);
+    setOpenLabel("");
+  }, [ledgerId]);
   // Leaving the Project view closes the Project being reviewed.
   useEffect(() => {
     if (view !== "project") setOpenProject(null);
@@ -261,11 +271,7 @@ export function Stats({
           />
         ) : (
           <>
-        <header className="flex items-center justify-between py-1">
-          <div className="flex items-center gap-2">
-            <AppLogo />
-            <span className="text-lg font-semibold tracking-tight">{t("stats")}</span>
-          </div>
+        <PageHeader>
           <div className="flex gap-1 text-xs">
             {(["month", "year"] as Period[]).map((p) => (
               <Pill key={p} active={period === p} onClick={() => setPeriod(p)}>
@@ -273,7 +279,7 @@ export function Stats({
               </Pill>
             ))}
           </div>
-        </header>
+        </PageHeader>
 
         {/* period navigator */}
         <div className="mt-2 flex items-center justify-between">

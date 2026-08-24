@@ -5,7 +5,7 @@ import { portfolioTotals, toBase, rateToBase } from "../../lib/holdings";
 import { useBalances } from "../../data/useBalances";
 import { useHoldings } from "../../data/useHoldings";
 import type { Account } from "../../domain/types";
-import { AppLogo } from "../../components/AppLogo";
+import { PageHeader } from "../../components/PageHeader";
 import { Investments } from "./Investments";
 
 const BASE_CURRENCY = "TWD";
@@ -59,10 +59,7 @@ export function Assets({
   return (
     <main className="min-h-dvh bg-slate-900 text-slate-100">
       <div className="mx-auto max-w-md px-4 pb-28 pt-4">
-        <header className="flex items-center gap-2 py-1">
-          <AppLogo />
-          <span className="text-lg font-semibold tracking-tight">{t("assets")}</span>
-        </header>
+        <PageHeader />
 
         <div className="mt-1 border-y border-slate-800 py-3 text-center">
           <p className="text-xs text-slate-500">{t("netWorth")}</p>

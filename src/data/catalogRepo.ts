@@ -7,7 +7,6 @@ import {
   addDoc,
   collection,
   doc,
-  getDocs,
   onSnapshot,
   serverTimestamp,
   updateDoc,
@@ -49,9 +48,6 @@ function toCategory(s: QueryDocumentSnapshot<DocumentData>): Category {
 }
 
 export const accountRepo = {
-  async fetch(ledgerId: string): Promise<Account[]> {
-    return (await getDocs(accountsCol(ledgerId))).docs.map(toAccount).sort(bySort);
-  },
   subscribe(ledgerId: string, cb: (a: Account[]) => void): Unsubscribe {
     return onSnapshot(
       accountsCol(ledgerId),
@@ -75,9 +71,6 @@ export const accountRepo = {
 };
 
 export const categoryRepo = {
-  async fetch(ledgerId: string): Promise<Category[]> {
-    return (await getDocs(categoriesCol(ledgerId))).docs.map(toCategory).sort(bySort);
-  },
   subscribe(ledgerId: string, cb: (c: Category[]) => void): Unsubscribe {
     return onSnapshot(
       categoriesCol(ledgerId),
