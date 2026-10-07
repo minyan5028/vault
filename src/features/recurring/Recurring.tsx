@@ -4,6 +4,7 @@ import { formatMoney, toMinor, toMajor } from "../../lib/money";
 import { toDateInputValue, fromDateInputValue } from "../../lib/date";
 import { recurringRepo, type RecurringInput } from "../../data/recurringRepo";
 import { TypeToggle } from "../../components/TypeToggle";
+import { defaultPair, pickFrom, pickTo, swap, type TransferPair } from "../../lib/transferPair";
 import type {
   Account,
   Category,
@@ -152,10 +153,14 @@ function RuleForm({
   const [amountText, setAmountText] = useState(rule ? String(toMajor(rule.amount)) : "");
   const [title, setTitle] = useState(rule?.title ?? "");
   const [categoryId, setCategoryId] = useState<string>(rule?.categoryId ?? "");
-  const [accountId, setAccountId] = useState(rule?.accountId ?? accounts[0]?.id ?? "");
+  const [accountId, setAccountId] = useState(() => rule?.accountId ?? defaultPair(accounts).from);
   const [toAccountId, setToAccountId] = useState(
-    rule?.toAccountId ?? accounts[1]?.id ?? accounts[0]?.id ?? "",
+    () => rule?.toAccountId ?? defaultPair(accounts, rule?.accountId).to,
   );
+  function setPair(p: TransferPair) {
+    setAccountId(p.from);
+    setToAccountId(p.to);
+  }
   const [frequency, setFrequency] = useState<RecurringFrequency>(rule?.frequency ?? "monthly");
   const [interval, setInterval] = useState(rule?.interval ?? 1);
   const [startDate, setStartDate] = useState<Date>(() => rule?.startDate ?? new Date());
@@ -266,7 +271,15 @@ function RuleForm({
         )}
 
         <label className="block text-xs text-slate-500">{isTransfer ? t("from") : t("account")}</label>
-        <select value={accountId} onChange={(e) => setAccountId(e.target.value)} className={field}>
+        <select
+          value={accountId}
+          onChange={(e) =>
+            isTransfer
+              ? setPair(pickFrom({ from: accountId, to: toAccountId }, e.target.value))
+              : setAccountId(e.target.value)
+          }
+          className={field}
+        >
           {accounts
             .filter((a) => !a.archived)
             .map((a) => (
@@ -278,8 +291,23 @@ function RuleForm({
 
         {isTransfer && (
           <>
-            <label className="block text-xs text-slate-500">{t("to")}</label>
-            <select value={toAccountId} onChange={(e) => setToAccountId(e.target.value)} className={field}>
+            <div className="flex items-center justify-between">
+              <label className="block text-xs text-slate-500">{t("to")}</label>
+              <button
+                type="button"
+                onClick={() => setPair(swap({ from: accountId, to: toAccountId }))}
+                aria-label={t("swapAccounts")}
+                title={t("swapAccounts")}
+                className="rounded-full bg-slate-800 px-2 text-sm text-slate-300 hover:bg-slate-700"
+              >
+                ⇅
+              </button>
+            </div>
+            <select
+              value={toAccountId}
+              onChange={(e) => setPair(pickTo({ from: accountId, to: toAccountId }, e.target.value))}
+              className={field}
+            >
               {accounts
                 .filter((a) => !a.archived)
                 .map((a) => (

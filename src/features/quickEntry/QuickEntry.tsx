@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { formatMoney, toMinor, toMajor } from "../../lib/money";
 import { toDateInputValue, fromDateInputValue } from "../../lib/date";
 import { selectableProjects, stampingProject } from "../../lib/project";
+import { defaultPair, pickFrom, pickTo, swap, type TransferPair } from "../../lib/transferPair";
 import type { Account, Category, EventType, Project, Transaction } from "../../domain/types";
 import { transactionRepo, type EntryDraft, type TitleSuggestion } from "../../data/transactionRepo";
 import { holdingRepo } from "../../data/holdingRepo";
@@ -78,10 +79,10 @@ export function QuickEntry({
   const [type, setType] = useState<EventType>(initial?.type ?? "expense");
   const [amountText, setAmountText] = useState(initial ? String(toMajor(initial.amount)) : "");
   const [accountId, setAccountId] = useState(
-    initial?.accountId ?? initialAccountId ?? accounts[0]?.id ?? "",
+    () => initial?.accountId ?? defaultPair(accounts, initialAccountId).from,
   );
   const [toAccountId, setToAccountId] = useState(
-    initial?.toAccountId ?? accounts[1]?.id ?? accounts[0]?.id ?? "",
+    () => initial?.toAccountId ?? defaultPair(accounts, initial?.accountId ?? initialAccountId).to,
   );
   const [categoryId, setCategoryId] = useState<string | null>(
     initial
@@ -121,6 +122,13 @@ export function QuickEntry({
     initial && initial.toAmount !== initial.amount ? String(toMajor(initial.toAmount)) : "",
   );
   const [toAmountEdited, setToAmountEdited] = useState(false);
+  // A typed received amount is in the destination's currency, so it goes stale
+  // once the destination changes — fall back to the converted prefill.
+  function setPair(p: TransferPair) {
+    if (p.to !== toAccountId) setToAmountEdited(false);
+    setAccountId(p.from);
+    setToAccountId(p.to);
+  }
   useEffect(() => holdingRepo.subscribeFx(ledgerId, setFx), [ledgerId]);
 
   // Title autocomplete: suggest past titles (same shop) as you type.
@@ -263,6 +271,39 @@ export function QuickEntry({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  // Account (source) selector — chips. For a transfer it reads first, so the
+  // form flows 從 → 至 like the money does.
+  const sourceAccount = (
+    <section className={isTransfer ? "" : "mt-4"}>
+      <p className="mb-2 text-xs uppercase tracking-wide text-slate-500">
+        {isTransfer ? t("from") : t("account")}
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {accounts
+          .filter((a) => !a.archived)
+          .map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              onClick={() =>
+                isTransfer
+                  ? setPair(pickFrom({ from: accountId, to: toAccountId }, a.id))
+                  : setAccountId(a.id)
+              }
+              className={
+                "rounded-full px-3 py-1 text-sm " +
+                (accountId === a.id
+                  ? "bg-slate-100 text-slate-900"
+                  : "bg-slate-800 text-slate-300")
+              }
+            >
+              {a.name}
+            </button>
+          ))}
+      </div>
+    </section>
+  );
+
   return (
     <div className="fixed inset-0 z-20 overflow-y-auto bg-slate-900 text-slate-100">
       {saved && (
@@ -404,11 +445,22 @@ export function QuickEntry({
         {/* Category grid (hidden for transfers) or transfer destination */}
         {isTransfer ? (
           <>
+            {sourceAccount}
+            <div className="mt-3 flex justify-center">
+              <button
+                type="button"
+                onClick={() => setPair(swap({ from: accountId, to: toAccountId }))}
+                aria-label={t("swapAccounts")}
+                title={t("swapAccounts")}
+                className="rounded-full bg-slate-800 px-3 py-1 text-sm text-slate-300 hover:bg-slate-700"
+              >
+                ⇅
+              </button>
+            </div>
             <TransferAccounts
               accounts={accounts}
-              fromId={accountId}
               toId={toAccountId}
-              onTo={setToAccountId}
+              onTo={(id) => setPair(pickTo({ from: accountId, to: toAccountId }, id))}
               toLabel={t("to")}
             />
             {isCross && (
@@ -460,31 +512,7 @@ export function QuickEntry({
           </section>
         )}
 
-        {/* Account (source) selector — chips */}
-        <section className="mt-4">
-          <p className="mb-2 text-xs uppercase tracking-wide text-slate-500">
-            {isTransfer ? t("from") : t("account")}
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {accounts
-              .filter((a) => !a.archived)
-              .map((a) => (
-                <button
-                  key={a.id}
-                  type="button"
-                  onClick={() => setAccountId(a.id)}
-                  className={
-                    "rounded-full px-3 py-1 text-sm " +
-                    (accountId === a.id
-                      ? "bg-slate-100 text-slate-900"
-                      : "bg-slate-800 text-slate-300")
-                  }
-                >
-                  {a.name}
-                </button>
-              ))}
-          </div>
-        </section>
+        {!isTransfer && sourceAccount}
 
         {/* Project — the second classification axis (ADR-0009). Absent entirely
             when the Ledger has none, so the everyday path is untouched. */}
@@ -588,19 +616,17 @@ export function QuickEntry({
 
 function TransferAccounts({
   accounts,
-  fromId,
   toId,
   onTo,
   toLabel,
 }: {
   accounts: Account[];
-  fromId: string;
   toId: string;
   onTo: (id: string) => void;
   toLabel: string;
 }) {
   return (
-    <section>
+    <section className="mt-1">
       <p className="mb-2 text-xs uppercase tracking-wide text-slate-500">{toLabel}</p>
       <div className="flex flex-wrap gap-2">
         {accounts
@@ -610,9 +636,8 @@ function TransferAccounts({
               key={a.id}
               type="button"
               onClick={() => onTo(a.id)}
-              disabled={a.id === fromId}
               className={
-                "rounded-full px-3 py-1 text-sm disabled:opacity-30 " +
+                "rounded-full px-3 py-1 text-sm " +
                 (toId === a.id ? "bg-slate-100 text-slate-900" : "bg-slate-800 text-slate-300")
               }
             >

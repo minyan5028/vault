@@ -52,8 +52,11 @@ export function EntryRow({
   const projectLabel = tx.projectId ? (project?.name ?? t("deletedProject")) : null;
   const from = endpointName(tx.accountId, endpoints);
   const to = endpointName(tx.toAccountId, endpoints);
-  const label =
-    tx.title || (tx.type === "transfer" ? `${from} → ${to}` : category?.name) || "";
+  const route = `${from} → ${to}`;
+  const label = tx.title || (tx.type === "transfer" ? route : category?.name) || "";
+  // A titled transfer still owes the reader its direction; an untitled one
+  // already shows it as the label.
+  const subtitle = tx.type === "transfer" && tx.title ? route : from;
   // On an account detail, this row's figure is that account's own movement: the
   // credited toAmount (in its currency) when it's the transfer destination,
   // otherwise amount. On the Timeline it's the source amount/currency.
@@ -115,7 +118,7 @@ export function EntryRow({
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm text-slate-200">{label}</p>
           <p className="truncate text-xs text-slate-500">
-            {from}
+            {subtitle}
             {authorName && <span className="text-slate-600"> · {authorName}</span>}
             {projectLabel && (
               <span className={project ? "text-emerald-500/80" : "italic text-slate-600"}>

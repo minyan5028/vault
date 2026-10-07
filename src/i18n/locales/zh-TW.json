@@ -17,6 +17,7 @@
   "yesterday": "昨天",
   "from": "從",
   "to": "至",
+  "swapAccounts": "對調帳戶",
   "receivedAmount": "轉入金額（{{cur}}）",
   "exchangeRates": "匯率",
   "titlePlaceholder": "這筆是什麼？（選填）",

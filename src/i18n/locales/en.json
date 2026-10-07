@@ -17,6 +17,7 @@
   "yesterday": "Yesterday",
   "from": "From",
   "to": "To",
+  "swapAccounts": "Swap accounts",
   "receivedAmount": "Amount received ({{cur}})",
   "exchangeRates": "Exchange rates",
   "titlePlaceholder": "What was it? (optional)",
