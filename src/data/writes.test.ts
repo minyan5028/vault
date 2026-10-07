@@ -1050,6 +1050,20 @@ describe("planSnapshot", () => {
     });
   });
 
+  // A merge-set treats an empty map as a value, not as "nothing to merge": it
+  // replaces the stored map. The TWD group carries no rate, so writing its
+  // `fx: {}` erased the USD rate from meta/fx and from the same-date snapshot.
+  it("writes no FX at all for a base-currency group", () => {
+    const { ops } = planSnapshot(
+      L,
+      { date: "2026-07-31", entries: { "hold-1": { price: 11615, shares: 200_0000 } }, fx: {} },
+      JUL,
+    );
+    expect(ops[0]).toMatchObject({ kind: "set", path: ["ledgers", L, "snapshots", "2026-07-31"] });
+    expect(ops[0]).not.toHaveProperty("data.fx");
+    expect(ops.some((o) => o.path.join("/") === ["ledgers", L, "meta", "fx"].join("/"))).toBe(false);
+  });
+
   it("leaves holdings outside the entries untouched", () => {
     const { ops } = planSnapshot(L, { date: "2026-07-31", entries: {}, fx: {} }, JUL);
     expect(ops.filter((o) => o.kind === "update")).toHaveLength(0);

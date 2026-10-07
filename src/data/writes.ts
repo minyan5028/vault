@@ -954,6 +954,9 @@ export function planRemoveHolding(
  * The snapshot document is merged, so updating a second currency group on the
  * same date accumulates into one `snapshots/{date}` doc rather than
  * overwriting it. Untouched holdings keep their previous pricedAt.
+ *
+ * A group with no rate (the base currency) writes no FX at all: a merge-set
+ * replaces a map with an empty one rather than merging nothing into it.
  */
 export function planSnapshot(
   ledgerId: string,
@@ -964,12 +967,13 @@ export function planSnapshot(
   for (const [holdingId, e] of Object.entries(snap.entries)) {
     entries[holdingId] = { price: e.price, shares: e.shares };
   }
+  const hasFx = Object.keys(snap.fx).length > 0;
   return {
     ops: [
       {
         kind: "set",
         path: snapshotPath(ledgerId, snap.date),
-        data: { date: snap.date, entries, fx: snap.fx },
+        data: hasFx ? { date: snap.date, entries, fx: snap.fx } : { date: snap.date, entries },
         merge: true,
       },
       ...Object.entries(snap.entries).map(([holdingId, e]) => ({
@@ -977,7 +981,9 @@ export function planSnapshot(
         path: holdingPath(ledgerId, holdingId),
         data: { price: e.price, shares: e.shares, pricedAt: atTime(pricedAt) },
       })),
-      { kind: "set", path: fxPath(ledgerId), data: { rates: snap.fx }, merge: true },
+      ...(hasFx
+        ? [{ kind: "set" as const, path: fxPath(ledgerId), data: { rates: snap.fx }, merge: true as const }]
+        : []),
     ],
   };
 }
