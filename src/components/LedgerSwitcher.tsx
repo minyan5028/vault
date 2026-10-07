@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLedgerNav } from "./ledgerNav";
+import { isImeKey } from "../lib/keyboard";
 
 /** Header control showing the active ledger, with a menu to switch or create.
  *  Reads the ledger list and the callbacks from context, so every screen can
@@ -64,6 +65,7 @@ export function LedgerSwitcher() {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   onKeyDown={(e) => {
+                    if (isImeKey(e)) return;
                     if (e.key === "Enter") submit();
                     if (e.key === "Escape") close();
                   }}

@@ -5,6 +5,7 @@ import type { Account, Category } from "../../domain/types";
 import { accountRepo, categoryRepo } from "../../data/catalogRepo";
 import { holdingRepo } from "../../data/holdingRepo";
 import { useHoldings } from "../../data/useHoldings";
+import { isImeKey } from "../../lib/keyboard";
 
 /** Manage the catalog: add / rename / archive accounts and categories. */
 export function Manage({
@@ -301,7 +302,7 @@ function AddRow({
       <input
         value={name}
         onChange={(e) => setName(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && add()}
+        onKeyDown={(e) => e.key === "Enter" && !isImeKey(e) && add()}
         placeholder={t("namePlaceholder")}
         className="flex-1 rounded-lg bg-slate-800 px-3 py-2 text-sm outline-none placeholder:text-slate-500"
       />

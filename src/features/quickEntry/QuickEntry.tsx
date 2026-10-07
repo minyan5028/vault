@@ -7,6 +7,7 @@ import type { Account, Category, EventType, Project, Transaction } from "../../d
 import { transactionRepo, type EntryDraft, type TitleSuggestion } from "../../data/transactionRepo";
 import { holdingRepo } from "../../data/holdingRepo";
 import { TypeToggle } from "../../components/TypeToggle";
+import { isImeKey } from "../../lib/keyboard";
 
 interface QuickEntryProps {
   /** When present, edit this transaction instead of creating a new one. */
@@ -102,7 +103,17 @@ export function QuickEntry({
   const [saved, setSaved] = useState(false);
   const [titleFocused, setTitleFocused] = useState(false);
   const [suggestions, setSuggestions] = useState<TitleSuggestion[]>([]);
+  // Keyboard-highlighted suggestion (desktop ↑/↓), -1 when none.
+  const [active, setActive] = useState(-1);
   const titleRef = useRef<HTMLInputElement>(null);
+  // The title last taken from a suggestion — once picked, it is not offered
+  // back to the owner as a suggestion of itself.
+  const pickedTitle = useRef<string | null>(null);
+  const amountRef = useRef<HTMLInputElement>(null);
+  const saveRef = useRef<HTMLButtonElement>(null);
+  // Set by a pick; moves focus on the next render, once the picked category
+  // has had the chance to enable Save.
+  const [focusAfterPick, setFocusAfterPick] = useState(false);
   // Cross-currency transfer: the amount credited to the destination, in its
   // currency (prefilled from the current FX rate, editable).
   const [fx, setFx] = useState<Record<string, number>>({});
@@ -114,14 +125,20 @@ export function QuickEntry({
 
   // Title autocomplete: suggest past titles (same shop) as you type.
   useEffect(() => {
-    if (!titleFocused || !title.trim()) {
+    if (!titleFocused || !title.trim() || title === pickedTitle.current) {
       setSuggestions([]);
       return;
     }
     const h = setTimeout(() => {
       transactionRepo
         .suggestTitles(ledgerId, title, 6)
-        .then((s) => setSuggestions(s.filter((x) => x.title !== title)))
+        // An exact match stays, first: typing the whole name and then picking
+        // it is how its category and account come along.
+        .then((s) => {
+          const q = title.trim();
+          setSuggestions([...s.filter((x) => x.title === q), ...s.filter((x) => x.title !== q)]);
+          setActive(-1);
+        })
         .catch(() => setSuggestions([]));
     }, 200);
     return () => clearTimeout(h);
@@ -205,10 +222,42 @@ export function QuickEntry({
     setTimeout(onClose, 550);
   }
 
-  // Esc closes the overlay.
+  // Reuse the last-used shape for this title.
+  function pickSuggestion(s: TitleSuggestion) {
+    pickedTitle.current = s.title;
+    setTitle(s.title);
+    setType(s.type);
+    setAccountId(s.accountId);
+    if (s.categoryId) setCategoryId(s.categoryId);
+    if (s.toAccountId) setToAccountId(s.toAccountId);
+    setSuggestions([]);
+    setActive(-1);
+    setFocusAfterPick(true);
+  }
+
+  // After a pick the entry is often complete: land on Save, so the next Enter
+  // saves. Without an amount yet, go back up for it instead.
+  useEffect(() => {
+    if (!focusAfterPick) return;
+    setFocusAfterPick(false);
+    if (canSave) saveRef.current?.focus();
+    else if (minor <= 0) amountRef.current?.focus();
+  }, [focusAfterPick, canSave, minor]);
+
+  // Cmd/Ctrl+Enter saves from any field (desktop).
+  const saveLatest = useRef(save);
+  saveLatest.current = save;
+
+  // Esc closes the overlay; Cmd/Ctrl+Enter saves.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      // A key an IME is using to pick or cancel a candidate is not a command.
+      if (e.isComposing || e.keyCode === 229) return;
       if (e.key === "Escape") onClose();
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        saveLatest.current();
+      }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -263,13 +312,14 @@ export function QuickEntry({
         {/* Amount (OS numeric keyboard) + title */}
         <div className="py-6 text-center">
           <input
+            ref={amountRef}
             inputMode="decimal"
             enterKeyHint="next"
             autoFocus
             value={amountText}
             onChange={(e) => setAmountText(sanitizeAmount(e.target.value))}
             onKeyDown={(e) => {
-              if (e.key === "Enter") {
+              if (e.key === "Enter" && !e.metaKey && !e.ctrlKey) {
                 e.preventDefault();
                 titleRef.current?.focus();
               }
@@ -284,14 +334,31 @@ export function QuickEntry({
             <input
               ref={titleRef}
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={(e) => {
+                pickedTitle.current = null; // typing again re-opens suggestions
+                setTitle(e.target.value);
+              }}
               onFocus={() => setTitleFocused(true)}
               onBlur={() => setTimeout(() => setTitleFocused(false), 150)}
               onKeyDown={(e) => {
-                // "Done" just dismisses the keyboard — there may be more to edit
-                // (category, account). Saving is an explicit tap on Save.
-                if (e.key === "Enter") {
+                if (isImeKey(e)) return;
+                const open = titleFocused && suggestions.length > 0;
+                if (open && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
                   e.preventDefault();
+                  // Cycles through -1 (nothing highlighted) and each row.
+                  const n = suggestions.length + 1;
+                  const step = e.key === "ArrowDown" ? 1 : -1;
+                  setActive((i) => ((i + 1 + step + n) % n) - 1);
+                  return;
+                }
+                if (e.key === "Enter" && !e.metaKey && !e.ctrlKey) {
+                  e.preventDefault();
+                  if (open && active >= 0) {
+                    pickSuggestion(suggestions[active]);
+                    return;
+                  }
+                  // "Done" just dismisses the keyboard — there may be more to
+                  // edit (category, account). Saving is an explicit tap on Save.
                   e.currentTarget.blur();
                 }
               }}
@@ -301,21 +368,18 @@ export function QuickEntry({
             />
             {titleFocused && suggestions.length > 0 && (
               <ul className="absolute left-0 right-0 top-full z-10 mt-1 overflow-hidden rounded-xl bg-slate-800 text-left shadow-lg ring-1 ring-slate-700">
-                {suggestions.map((s) => (
+                {suggestions.map((s, i) => (
                   <li key={s.title}>
                     <button
                       type="button"
                       onMouseDown={(e) => {
                         e.preventDefault(); // keep focus so the click registers
-                        // Reuse the last-used shape for this title.
-                        setTitle(s.title);
-                        setType(s.type);
-                        setAccountId(s.accountId);
-                        if (s.categoryId) setCategoryId(s.categoryId);
-                        if (s.toAccountId) setToAccountId(s.toAccountId);
-                        setSuggestions([]);
+                        pickSuggestion(s);
                       }}
-                      className="block w-full truncate px-3 py-2 text-sm text-slate-200 hover:bg-slate-700"
+                      className={
+                        "block w-full truncate px-3 py-2 text-sm text-slate-200 hover:bg-slate-700 " +
+                        (i === active ? "bg-slate-700" : "")
+                      }
                     >
                       {s.title}
                     </button>
@@ -491,6 +555,7 @@ export function QuickEntry({
         {/* Save / Delete */}
         <section className="mt-5">
           <button
+            ref={saveRef}
             type="button"
             onClick={save}
             disabled={!canSave}
